@@ -37,17 +37,6 @@ jobs:
           mvn -f entitlements-client-bom/pom.xml versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
           mvn -f entitlements-client-spring-boot-starter/pom.xml versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
           mvn -f entitlements-client-test/pom.xml versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false -Dentitlements-client.version=$VERSION
-      - name: Debug settings.xml and credentials
-        run: |
-          echo "settings.xml server config:"
-          grep -A5 '<server>' ~/.m2/settings.xml || echo "No server block found"
-          echo "---"
-          echo "NEXUS_USERNAME length: ${#NEXUS_USERNAME}"
-          echo "NEXUS_PASSWORD length: ${#NEXUS_PASSWORD}"
-          echo "NEXUS_USERNAME first 3 chars: ${NEXUS_USERNAME:0:3}..."
-        env:
-          NEXUS_USERNAME: ${{ secrets.NEXUS_USERNAME }}
-          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
       - name: Publish SDK
         run: mvn deploy --batch-mode -P release -DskipTests
         env:
