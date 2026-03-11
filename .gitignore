@@ -10,3 +10,4 @@ target/
 *~
 .claude/
 .bmad-core/
+.gpg-*.asc
