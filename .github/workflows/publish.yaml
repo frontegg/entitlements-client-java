@@ -18,6 +18,18 @@ jobs:
           server-password: NEXUS_PASSWORD
           gpg-private-key: ${{ secrets.GPG_SIGNING_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
+      - name: Verify GPG key
+        run: |
+          echo "GPG secret keys:"
+          gpg --list-secret-keys --keyid-format=long
+          if ! gpg --list-secret-keys 2>/dev/null | grep -q sec; then
+            echo "::error::No GPG secret keys found. Check that GPG_SIGNING_KEY secret is set and contains a valid ASCII-armored private key."
+            exit 1
+          fi
+          if gpg --list-secret-keys 2>/dev/null | grep -q expired; then
+            echo "::error::GPG key is expired. Generate a new key or extend the expiry and update the GPG_SIGNING_KEY org secret."
+            exit 1
+          fi
       - name: Set release version
         run: |
           VERSION=${GITHUB_REF_NAME#v}
