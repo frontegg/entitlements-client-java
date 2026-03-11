@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.frontegg.sdk</groupId>
+    <artifactId>entitlements-client-bom</artifactId>
+    <version>0.1.0-beta.1</version>
+    <packaging>pom</packaging>
+
+    <name>Frontegg Entitlements Client BOM</name>
+    <description>Bill of Materials for Frontegg Entitlements Client — aligns transitive dependency versions</description>
+    <url>https://github.com/frontegg/entitlements-client-java</url>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>frontegg</id>
+            <name>Frontegg</name>
+            <email>opensource@frontegg.com</email>
+            <organization>Frontegg</organization>
+            <organizationUrl>https://frontegg.com</organizationUrl>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git://github.com/frontegg/entitlements-client-java.git</connection>
+        <developerConnection>scm:git:ssh://github.com/frontegg/entitlements-client-java.git</developerConnection>
+        <url>https://github.com/frontegg/entitlements-client-java/tree/main</url>
+    </scm>
+
+    <properties>
+        <authzed.version>1.5.4</authzed.version>
+        <grpc.version>1.78.0</grpc.version>
+        <protobuf.version>4.33.5</protobuf.version>
+        <slf4j.version>2.0.16</slf4j.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Frontegg Entitlements Client -->
+            <dependency>
+                <groupId>com.frontegg.sdk</groupId>
+                <artifactId>entitlements-client</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Frontegg Entitlements Client Spring Boot Starter -->
+            <dependency>
+                <groupId>com.frontegg.sdk</groupId>
+                <artifactId>entitlements-client-spring-boot-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Frontegg Entitlements Client Test Utilities -->
+            <dependency>
+                <groupId>com.frontegg.sdk</groupId>
+                <artifactId>entitlements-client-test</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- gRPC BOM -->
+            <dependency>
+                <groupId>io.grpc</groupId>
+                <artifactId>grpc-bom</artifactId>
+                <version>${grpc.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Protobuf BOM -->
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-bom</artifactId>
+                <version>${protobuf.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- authzed-java -->
+            <dependency>
+                <groupId>com.authzed.api</groupId>
+                <artifactId>authzed</artifactId>
+                <version>${authzed.version}</version>
+            </dependency>
+
+            <!-- SLF4J -->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+
+            <!-- Caffeine cache -->
+            <dependency>
+                <groupId>com.github.ben-manes.caffeine</groupId>
+                <artifactId>caffeine</artifactId>
+                <version>3.1.8</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <profiles>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>3.2.7</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                                <configuration>
+                                    <gpgArguments>
+                                        <arg>--pinentry-mode</arg>
+                                        <arg>loopback</arg>
+                                    </gpgArguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>0.10.0</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <tokenAuth>true</tokenAuth>
+                            <autoPublish>true</autoPublish>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

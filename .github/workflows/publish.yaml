@@ -1,0 +1,51 @@
+name: Publish to Maven Central
+on:
+  push:
+    tags: ['v*']
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: maven
+          server-id: central
+          server-username: MAVEN_CENTRAL_USERNAME
+          server-password: MAVEN_CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+      - name: Set release version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          mvn versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
+          mvn -f entitlements-client-bom/pom.xml versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
+          mvn -f entitlements-client-spring-boot-starter/pom.xml versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
+          mvn -f entitlements-client-test/pom.xml versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false -Dentitlements-client.version=$VERSION
+      - name: Publish SDK
+        run: mvn deploy --batch-mode -P release -DskipTests
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      - name: Publish BOM
+        run: mvn -f entitlements-client-bom/pom.xml deploy --batch-mode -P release
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      - name: Publish Spring Boot Starter
+        run: mvn -f entitlements-client-spring-boot-starter/pom.xml deploy --batch-mode -P release -DskipTests
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      - name: Publish Test Utilities
+        run: mvn -f entitlements-client-test/pom.xml deploy --batch-mode -P release -DskipTests
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}

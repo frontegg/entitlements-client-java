@@ -1,0 +1,14 @@
+branches:
+  - main
+  - name: next
+    prerelease: alpha
+plugins:
+  - "@semantic-release/commit-analyzer"
+  - "@semantic-release/release-notes-generator"
+  - - "@semantic-release/exec"
+    - prepareCmd: |
+        mvn versions:set -DnewVersion=${nextRelease.version} -DgenerateBackupPoms=false
+        mvn -f entitlements-client-bom/pom.xml versions:set -DnewVersion=${nextRelease.version} -DgenerateBackupPoms=false
+        mvn -f entitlements-client-spring-boot-starter/pom.xml versions:set -DnewVersion=${nextRelease.version} -DgenerateBackupPoms=false
+        mvn -f entitlements-client-test/pom.xml versions:set -DnewVersion=${nextRelease.version} -DgenerateBackupPoms=false -Dentitlements-client.version=${nextRelease.version}
+  - "@semantic-release/github"
