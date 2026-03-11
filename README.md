@@ -1095,11 +1095,11 @@ cannot be used on Java 11 or earlier.
 
 ## Contributing
 
-1. Fork the repository and create a feature branch from `main`.
+1. Fork the repository and create a feature branch from `master`.
 2. Write or update unit tests for all changed behaviour.
 3. Ensure `mvn verify` passes locally before opening a pull request.
 4. Follow the existing commit message format: `FR-<JIRA-KEY> - <description>`.
-5. Open a pull request against `main` with a clear description of the change and its motivation.
+5. Open a pull request against `master` with a clear description of the change and its motivation.
 
 For bug reports and feature requests, open a GitHub Issue with a minimal reproducer or a
 description of the desired behaviour.

@@ -156,4 +156,16 @@ class SpiceDBQueryClientTest {
                         entityCtx,
                         new RouteRequestContext("GET", "/api/v1/resources")));
     }
+
+    // -------------------------------------------------------------------------
+    // Unsupported combinations
+    // -------------------------------------------------------------------------
+
+    @Test
+    void execute_permissionRequestWithEntitySubject_throwsUnsupportedOperationException() {
+        assertThrows(UnsupportedOperationException.class,
+                () -> queryClient.execute(
+                        entityCtx,
+                        new PermissionRequestContext("read:data")));
+    }
 }

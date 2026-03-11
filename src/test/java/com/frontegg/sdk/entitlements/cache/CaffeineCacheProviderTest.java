@@ -6,6 +6,9 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -207,15 +210,62 @@ class CaffeineCacheProviderTest {
         tinyCache.put("k2", "v2");
         tinyCache.put("k3", "v3"); // exceeds maxSize=2; should trigger eviction
 
-        // Caffeine eviction is asynchronous — wait briefly for maintenance to run
-        Thread.sleep(50);
-
-        int presentCount = 0;
-        if (tinyCache.get("k1").isPresent()) presentCount++;
-        if (tinyCache.get("k2").isPresent()) presentCount++;
-        if (tinyCache.get("k3").isPresent()) presentCount++;
+        // Caffeine eviction is asynchronous — poll until eviction occurs
+        int retries = 0;
+        int presentCount = 999;
+        while (presentCount > 2 && retries < 20) {
+            Thread.sleep(50);
+            presentCount = 0;
+            if (tinyCache.get("k1").isPresent()) presentCount++;
+            if (tinyCache.get("k2").isPresent()) presentCount++;
+            if (tinyCache.get("k3").isPresent()) presentCount++;
+            retries++;
+        }
 
         assertTrue(presentCount <= 2,
                 "Cache with maxSize=2 must have at most 2 entries after inserting 3 (found " + presentCount + ")");
+    }
+
+    // -------------------------------------------------------------------------
+    // Concurrent access
+    // -------------------------------------------------------------------------
+
+    @Test
+    void concurrentPutAndGet_maintainsCacheConsistency() throws Exception {
+        CacheConfiguration config = new CacheConfiguration(10_000, Duration.ofSeconds(60));
+        CaffeineCacheProvider<String, String> cache = new CaffeineCacheProvider<>(config);
+
+        int threadCount = 50;
+        int opsPerThread = 100;
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(threadCount);
+        AtomicInteger errors = new AtomicInteger(0);
+
+        for (int t = 0; t < threadCount; t++) {
+            final int threadId = t;
+            new Thread(() -> {
+                try {
+                    startLatch.await();
+                    for (int i = 0; i < opsPerThread; i++) {
+                        String key = "key-" + threadId + "-" + i;
+                        String value = "value-" + threadId + "-" + i;
+                        cache.put(key, value);
+                        Optional<String> result = cache.get(key);
+                        // Value should be present (we just put it) and correct
+                        if (result.isEmpty() || !result.get().equals(value)) {
+                            errors.incrementAndGet();
+                        }
+                    }
+                } catch (Exception e) {
+                    errors.incrementAndGet();
+                } finally {
+                    doneLatch.countDown();
+                }
+            }).start();
+        }
+
+        startLatch.countDown(); // Start all threads simultaneously
+        assertTrue(doneLatch.await(10, TimeUnit.SECONDS), "All threads should complete within 10s");
+        assertEquals(0, errors.get(), "No errors should occur during concurrent access");
     }
 }

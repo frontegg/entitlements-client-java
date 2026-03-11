@@ -12,6 +12,9 @@ import com.frontegg.sdk.entitlements.model.EntitlementsResult;
 import com.frontegg.sdk.entitlements.model.RouteRequestContext;
 import com.frontegg.sdk.entitlements.model.UserSubjectContext;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.Base64;
@@ -214,6 +217,84 @@ class RouteSpiceDBQueryTest {
         for (CheckBulkPermissionsRequestItem item : requests.get(0).getItemsList()) {
             assertFalse(item.hasContext(),
                     "caveat context must NOT be present when attributes are empty");
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // HTTP method case normalization
+    // -------------------------------------------------------------------------
+
+    @ParameterizedTest
+    @CsvSource({
+            "get, GET",
+            "GET, GET",
+            "Get, GET",
+            "gET, GET",
+            "post, POST",
+            "patch, PATCH"
+    })
+    void query_httpMethodCase_alwaysUppercased(String input, String expected) {
+        AtomicReference<CheckBulkPermissionsRequest> captured = new AtomicReference<>();
+
+        RouteSpiceDBQuery query = new RouteSpiceDBQuery(req -> {
+            captured.set(req);
+            return emptyResponse();
+        });
+
+        query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new RouteRequestContext(input, "/api/v1/resources"));
+
+        CheckBulkPermissionsRequest request = captured.get();
+        assertNotNull(request);
+
+        // Route key should have the expected uppercased method
+        String expectedRouteKey = expected + ":/api/v1/resources";
+        String expectedB64 = base64(expectedRouteKey);
+
+        for (int i = 0; i < request.getItemsCount(); i++) {
+            assertEquals(expectedB64, request.getItems(i).getResource().getObjectId(),
+                    "resource object ID must be base64(UPPERCASED_METHOD:PATH)");
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Paths with special characters
+    // -------------------------------------------------------------------------
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/v1/items?id=123",
+            "/api/v1/items%2F123",
+            "/api/v1/items/테스트",
+            "/api/v1/reports#section",
+            "/api/v1/path with spaces"
+    })
+    void query_pathWithSpecialCharacters_encodedCorrectly(String path) {
+        AtomicReference<CheckBulkPermissionsRequest> captured = new AtomicReference<>();
+
+        RouteSpiceDBQuery query = new RouteSpiceDBQuery(req -> {
+            captured.set(req);
+            return emptyResponse();
+        });
+
+        query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new RouteRequestContext("GET", path));
+
+        CheckBulkPermissionsRequest request = captured.get();
+        assertNotNull(request, "request must be captured");
+
+        // Should not throw and request should be properly constructed
+        assertEquals(2, request.getItemsCount(), "must send exactly 2 items");
+
+        // Verify resource is correctly encoded
+        String expectedRouteKey = "GET:" + path;
+        String expectedB64 = base64(expectedRouteKey);
+
+        for (int i = 0; i < request.getItemsCount(); i++) {
+            assertEquals(expectedB64, request.getItems(i).getResource().getObjectId(),
+                    "resource object ID must be base64(GET:PATH) with special chars preserved");
         }
     }
 

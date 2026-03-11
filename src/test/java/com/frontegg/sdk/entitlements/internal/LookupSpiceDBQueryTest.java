@@ -300,6 +300,28 @@ class LookupSpiceDBQueryTest {
     }
 
     // -------------------------------------------------------------------------
+    // Null parameter handling
+    // -------------------------------------------------------------------------
+
+    @Test
+    void lookupResources_nullRequest_throwsNullPointerException() {
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> Collections.emptyIterator(),
+                req -> Collections.emptyIterator());
+
+        assertThrows(NullPointerException.class, () -> query.lookupResources(null));
+    }
+
+    @Test
+    void lookupSubjects_nullRequest_throwsNullPointerException() {
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> Collections.emptyIterator(),
+                req -> Collections.emptyIterator());
+
+        assertThrows(NullPointerException.class, () -> query.lookupSubjects(null));
+    }
+
+    // -------------------------------------------------------------------------
     // Helper factory methods
     // -------------------------------------------------------------------------
 
