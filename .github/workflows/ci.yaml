@@ -20,6 +20,8 @@ jobs:
           cache: maven
       - name: Build and test core SDK
         run: mvn verify --batch-mode
+      - name: Run integration tests
+        run: mvn verify -P integration --batch-mode
       - name: Install core SDK to local repo
         run: mvn install --batch-mode -DskipTests
       - name: Compile Spring Boot Starter

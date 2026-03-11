@@ -76,7 +76,11 @@ public class SpiceDBSchemaWriter {
     }
 
     /**
-     * Writes all fixture relationships used by the integration tests.
+     * Writes all fixture relationships used by the integration tests in a single batch request.
+     *
+     * <p>Using a single {@code WriteRelationships} call ensures that all relationships share
+     * the same ZedToken (revision), so the returned ZedToken represents a snapshot that
+     * contains all of them atomically.
      *
      * <p>Fixture data:
      * <ul>
@@ -90,51 +94,49 @@ public class SpiceDBSchemaWriter {
      * <p>Notably absent: no relationship for permission "admin:write" — used to test denied checks.
      */
     public void writeRelationships() {
-        // Feature "premium": user-1 and tenant-1 both entitled
-        writeRelationship("frontegg_feature", encode("premium"), "entitled",
-                "frontegg_user", encode("user-1"));
-        writeRelationship("frontegg_feature", encode("premium"), "entitled",
-                "frontegg_tenant", encode("tenant-1"));
-
-        // Permission "reports:read": user-1 and tenant-1 both entitled
-        writeRelationship("frontegg_permission", encode("reports:read"), "entitled",
-                "frontegg_user", encode("user-1"));
-        writeRelationship("frontegg_permission", encode("reports:read"), "entitled",
-                "frontegg_tenant", encode("tenant-1"));
-
-        // Route "GET:/api/v1/reports": user-1 entitled (user-level only)
-        // RouteSpiceDBQuery formats the key as METHOD:PATH before encoding
-        writeRelationship("frontegg_route", encode("GET:/api/v1/reports"), "entitled",
-                "frontegg_user", encode("user-1"));
-
-        // FGA: user-1 is viewer of doc-1, editor of doc-2
-        writeRelationship("document", encode("doc-1"), "viewer",
-                "frontegg_user", encode("user-1"));
-        writeRelationship("document", encode("doc-2"), "editor",
-                "frontegg_user", encode("user-1"));
+        WriteRelationshipsRequest request = WriteRelationshipsRequest.newBuilder()
+                // Feature "premium": user-1 and tenant-1 both entitled
+                .addUpdates(buildUpdate("frontegg_feature", encode("premium"), "entitled",
+                        "frontegg_user", encode("user-1")))
+                .addUpdates(buildUpdate("frontegg_feature", encode("premium"), "entitled",
+                        "frontegg_tenant", encode("tenant-1")))
+                // Permission "reports:read": user-1 and tenant-1 both entitled
+                .addUpdates(buildUpdate("frontegg_permission", encode("reports:read"), "entitled",
+                        "frontegg_user", encode("user-1")))
+                .addUpdates(buildUpdate("frontegg_permission", encode("reports:read"), "entitled",
+                        "frontegg_tenant", encode("tenant-1")))
+                // Route "GET:/api/v1/reports": user-1 entitled (user-level only)
+                // RouteSpiceDBQuery formats the key as METHOD:PATH before encoding
+                .addUpdates(buildUpdate("frontegg_route", encode("GET:/api/v1/reports"), "entitled",
+                        "frontegg_user", encode("user-1")))
+                // FGA: user-1 is viewer of doc-1, editor of doc-2
+                .addUpdates(buildUpdate("document", encode("doc-1"), "viewer",
+                        "frontegg_user", encode("user-1")))
+                .addUpdates(buildUpdate("document", encode("doc-2"), "editor",
+                        "frontegg_user", encode("user-1")))
+                .build();
+        permissionsStub.writeRelationships(request);
     }
 
-    private void writeRelationship(String resourceType, String resourceId,
-                                   String relation, String subjectType, String subjectId) {
-        WriteRelationshipsRequest request = WriteRelationshipsRequest.newBuilder()
-                .addUpdates(RelationshipUpdate.newBuilder()
-                        .setOperation(RelationshipUpdate.Operation.OPERATION_TOUCH)
-                        .setRelationship(Relationship.newBuilder()
-                                .setResource(ObjectReference.newBuilder()
-                                        .setObjectType(resourceType)
-                                        .setObjectId(resourceId)
-                                        .build())
-                                .setRelation(relation)
-                                .setSubject(SubjectReference.newBuilder()
-                                        .setObject(ObjectReference.newBuilder()
-                                                .setObjectType(subjectType)
-                                                .setObjectId(subjectId)
-                                                .build())
+    private static RelationshipUpdate buildUpdate(String resourceType, String resourceId,
+                                                   String relation,
+                                                   String subjectType, String subjectId) {
+        return RelationshipUpdate.newBuilder()
+                .setOperation(RelationshipUpdate.Operation.OPERATION_TOUCH)
+                .setRelationship(Relationship.newBuilder()
+                        .setResource(ObjectReference.newBuilder()
+                                .setObjectType(resourceType)
+                                .setObjectId(resourceId)
+                                .build())
+                        .setRelation(relation)
+                        .setSubject(SubjectReference.newBuilder()
+                                .setObject(ObjectReference.newBuilder()
+                                        .setObjectType(subjectType)
+                                        .setObjectId(subjectId)
                                         .build())
                                 .build())
                         .build())
                 .build();
-        permissionsStub.writeRelationships(request);
     }
 
     /**
