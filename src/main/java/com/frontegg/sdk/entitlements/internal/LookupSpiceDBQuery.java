@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Package-private query strategy that handles SpiceDB {@code LookupResources} and
@@ -34,11 +35,14 @@ class LookupSpiceDBQuery {
 
     private final LookupResourcesExecutor lookupResourcesExecutor;
     private final LookupSubjectsExecutor lookupSubjectsExecutor;
+    private final Supplier<Consistency> consistencySupplier;
 
     LookupSpiceDBQuery(LookupResourcesExecutor lookupResourcesExecutor,
-                       LookupSubjectsExecutor lookupSubjectsExecutor) {
+                       LookupSubjectsExecutor lookupSubjectsExecutor,
+                       Supplier<Consistency> consistencySupplier) {
         this.lookupResourcesExecutor = lookupResourcesExecutor;
         this.lookupSubjectsExecutor = lookupSubjectsExecutor;
+        this.consistencySupplier = consistencySupplier;
     }
 
     /**
@@ -58,7 +62,7 @@ class LookupSpiceDBQuery {
 
         com.authzed.api.v1.LookupResourcesRequest.Builder grpcRequestBuilder =
                 com.authzed.api.v1.LookupResourcesRequest.newBuilder()
-                        .setConsistency(Consistency.newBuilder().setFullyConsistent(true).build())
+                        .setConsistency(consistencySupplier.get())
                         .setSubject(SubjectReference.newBuilder()
                                 .setObject(ObjectReference.newBuilder()
                                         .setObjectType(request.subjectType())
@@ -106,7 +110,7 @@ class LookupSpiceDBQuery {
 
         com.authzed.api.v1.LookupSubjectsRequest.Builder grpcRequestBuilder =
                 com.authzed.api.v1.LookupSubjectsRequest.newBuilder()
-                        .setConsistency(Consistency.newBuilder().setFullyConsistent(true).build())
+                        .setConsistency(consistencySupplier.get())
                         .setResource(ObjectReference.newBuilder()
                                 .setObjectType(request.resourceType())
                                 .setObjectId(b64ResourceId)

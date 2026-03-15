@@ -3,6 +3,7 @@ package com.frontegg.sdk.entitlements.e2e;
 import com.frontegg.sdk.entitlements.EntitlementsClient;
 import com.frontegg.sdk.entitlements.EntitlementsClientFactory;
 import com.frontegg.sdk.entitlements.config.ClientConfiguration;
+import com.frontegg.sdk.entitlements.config.ConsistencyPolicy;
 import com.frontegg.sdk.entitlements.integration.SpiceDBSchemaWriter;
 import com.frontegg.sdk.entitlements.model.EntitlementsResult;
 import com.frontegg.sdk.entitlements.model.EntityRequestContext;
@@ -53,6 +54,7 @@ class SpiceDBE2ETest {
                 .engineEndpoint(endpoint)
                 .engineToken(token)
                 .useTls(false)
+                .consistencyPolicy(ConsistencyPolicy.FULLY_CONSISTENT)
                 .build();
 
         client = EntitlementsClientFactory.create(config);

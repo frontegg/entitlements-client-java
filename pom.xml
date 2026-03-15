@@ -278,7 +278,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-failsafe-plugin</artifactId>
-                        <version>3.2.5</version>
+                        <version>${maven-surefire-plugin.version}</version>
                         <configuration>
                             <includes>
                                 <include>**/integration/**Test.java</include>
@@ -303,7 +303,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-failsafe-plugin</artifactId>
-                        <version>3.5.5</version>
+                        <version>${maven-surefire-plugin.version}</version>
                         <configuration>
                             <includes>
                                 <include>**/e2e/**Test.java</include>

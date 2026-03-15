@@ -8,10 +8,10 @@
 | **gRPC** | grpc-java | 1.78.0 | gRPC transport (via authzed-java) |
 | **Protobuf** | protobuf-java | 4.33.5 | Protocol Buffers (via authzed-java) |
 | **Logging** | SLF4J API | 2.0.x | Logging facade |
-| **Caching** | Caffeine | 3.1.x | In-memory caching |
+| **Caching** | Caffeine | 3.2.x | In-memory caching |
 | **Spring Integration** | Spring Boot (provided) | 3.2+ | Auto-configuration for the starter module |
 | **Testing** | JUnit 5 | 5.10.x | Test framework |
-| **Testing** | Mockito | 5.x | Mocking library |
+| **Testing** | Mockito | 5.22.x | Mocking library |
 | **Publishing** | central-publishing-maven-plugin | 0.10.0 | Maven Central publishing |
 | **Signing** | maven-gpg-plugin | 3.2.7 | Artifact signing |
 | **CI/CD** | GitHub Actions | N/A | CI and deployment |

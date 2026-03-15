@@ -16,6 +16,8 @@ import com.google.protobuf.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.function.Supplier;
+
 /**
  * Package-private query strategy that handles {@link FeatureRequestContext} checks.
  *
@@ -43,9 +45,11 @@ class FeatureSpiceDBQuery {
     private static final String TYPE_FEATURE = "frontegg_feature";
 
     private final BulkPermissionsExecutor executor;
+    private final Supplier<Consistency> consistencySupplier;
 
-    FeatureSpiceDBQuery(BulkPermissionsExecutor executor) {
+    FeatureSpiceDBQuery(BulkPermissionsExecutor executor, Supplier<Consistency> consistencySupplier) {
         this.executor = executor;
+        this.consistencySupplier = consistencySupplier;
     }
 
     /**
@@ -77,7 +81,7 @@ class FeatureSpiceDBQuery {
                 TYPE_TENANT, b64TenantId, featureResource, caveatContext);
 
         CheckBulkPermissionsRequest request = CheckBulkPermissionsRequest.newBuilder()
-                .setConsistency(Consistency.newBuilder().setFullyConsistent(true).build())
+                .setConsistency(consistencySupplier.get())
                 .addItems(userItem)
                 .addItems(tenantItem)
                 .build();
@@ -91,11 +95,21 @@ class FeatureSpiceDBQuery {
             }
         }
 
+        boolean hasConditional = response.getPairsList().stream()
+                .filter(CheckBulkPermissionsPair::hasItem)
+                .map(pair -> pair.getItem().getPermissionship())
+                .anyMatch(p -> p == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION);
+        if (hasConditional) {
+            log.warn("SpiceDB returned CONDITIONAL_PERMISSION for feature check "
+                    + "userId={} featureKey={} — treating as denied (fail-closed). "
+                    + "Ensure caveat context is fully populated.",
+                    userCtx.userId(), featureCtx.featureKey());
+        }
+
         boolean entitled = response.getPairsList().stream()
                 .filter(CheckBulkPermissionsPair::hasItem)
                 .map(pair -> pair.getItem().getPermissionship())
-                .anyMatch(p -> p == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION
-                        || p == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION);
+                .anyMatch(p -> p == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION);
 
         log.debug("Feature check result entitled={} userId={} featureKey={}",
                 entitled, userCtx.userId(), featureCtx.featureKey());

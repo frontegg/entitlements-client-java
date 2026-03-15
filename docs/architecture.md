@@ -83,10 +83,10 @@ N/A — This is a client library published to Maven Central. No cloud infrastruc
 | **gRPC** | grpc-java | 1.78.0 | gRPC transport (via authzed-java) | Transitive dep from authzed-java, uses shaded Netty |
 | **Protobuf** | protobuf-java | 4.33.5 | Protocol Buffers (via authzed-java) | Transitive dep from authzed-java |
 | **Logging** | SLF4J API | 2.0.x | Logging facade | Universal Java logging facade, no implementation forced |
-| **Caching** | Caffeine | 3.1.x | In-memory caching | High-performance, thread-safe, Java 11+ compatible |
+| **Caching** | Caffeine | 3.2.x | In-memory caching | High-performance, thread-safe, Java 11+ compatible |
 | **Spring Integration** | Spring Boot (provided) | 3.2+ | Auto-configuration for Spring starter module | Provided scope — no forced Spring dependency for non-Spring consumers |
 | **Testing** | JUnit 5 | 5.10.x | Test framework | Industry standard, parameterized tests, extensions |
-| **Testing** | Mockito | 5.x | Mocking library | De facto standard for Java mocking |
+| **Testing** | Mockito | 5.22.x | Mocking library | De facto standard for Java mocking |
 | **Testing** | SLF4J Simple | 2.0.x | Test logging impl | Lightweight, test-scope only |
 | **Publishing** | central-publishing-maven-plugin | 0.10.0 | Maven Central publishing | Sonatype Central Portal (replaces deprecated nexus-staging) |
 | **Signing** | maven-gpg-plugin | 3.2.7 | Artifact signing | Required for Maven Central |
@@ -151,6 +151,15 @@ This SDK does not own data — it constructs gRPC requests and maps responses. T
 - `bulkRequestTimeout: Duration` — Bulk check deadline (default: 15s)
 - `maxRetries: int` — Retry count for transient errors (default: 3)
 - `useTls: boolean` — Enable TLS (default: true)
+- `consistencyPolicy: ConsistencyPolicy` — SpiceDB read consistency (default: `MINIMIZE_LATENCY`)
+
+### ConsistencyPolicy (enum)
+
+**Purpose:** Controls the consistency guarantee for SpiceDB reads.
+
+**Values:**
+- `MINIMIZE_LATENCY` — SpiceDB's default; fastest, allows stale reads
+- `FULLY_CONSISTENT` — Linearizable reads; hits the primary datastore on every request. Use for read-after-write consistency (e.g. tests, post-relationship-write flows)
 
 ---
 
@@ -183,7 +192,7 @@ This SDK does not own data — it constructs gRPC requests and maps responses. T
 **Key Interfaces:**
 - `EntitlementsResult execute(SubjectContext, RequestContext)`
 
-**Dependencies:** `FeatureSpiceDBQuery`, `PermissionSpiceDBQuery`, `FgaSpiceDBQuery`, authzed-java stubs
+**Dependencies:** `FeatureSpiceDBQuery`, `PermissionSpiceDBQuery`, `FgaSpiceDBQuery`, `RouteSpiceDBQuery`, `LookupSpiceDBQuery`, `ConsistencyFactory`, authzed-java stubs
 
 ### Query Strategies (internal)
 
@@ -196,7 +205,18 @@ This SDK does not own data — it constructs gRPC requests and maps responses. T
 - `RouteSpiceDBQuery` — Route matching with cached relationships
 - `LookupSpiceDBQuery` — Dispatches `LookupResources` and `LookupSubjects` RPCs
 
-**Dependencies:** authzed-java gRPC stubs, `Base64Utils`, `CaveatContextBuilder`
+**Dependencies:** authzed-java gRPC stubs, `Base64Utils`, `CaveatContextBuilder`, `Supplier<Consistency>`
+
+**Fail-closed behavior:** All query strategies treat `PERMISSIONSHIP_CONDITIONAL_PERMISSION` as denied (fail-closed) and emit a `WARN`-level log. This prevents incomplete caveat context from granting unintended access.
+
+### ConsistencyFactory (internal)
+
+**Responsibility:** Converts a `ConsistencyPolicy` enum into a `Supplier<Consistency>` that returns a pre-built protobuf `Consistency` instance. Zero allocation per call.
+
+**Key Interfaces:**
+- `static Supplier<Consistency> supplierFor(ConsistencyPolicy policy)`
+
+**Dependencies:** `ConsistencyPolicy`, authzed-java `Consistency` protobuf
 
 ### RetryHandler (internal)
 
@@ -233,6 +253,7 @@ graph TB
         B64[Base64Utils]
         CVT[CaveatContextBuilder]
         CCH[CaffeineCacheProvider]
+        CF[ConsistencyFactory]
     end
 
     subgraph "External (authzed-java)"
@@ -241,6 +262,7 @@ graph TB
 
     ECF --> SDBC
     SDBC --> QC
+    QC --> CF
     QC --> FQ
     QC --> PQ
     QC --> EQ
@@ -415,7 +437,7 @@ tag → Publish workflow → Maven Central staging → validation → release
 - **Format:** Structured key-value pairs in message: `"Checking entitlement subject={} resource={} relation={}"`
 - **Levels:**
   - `ERROR`: Unrecoverable failures (configuration errors, fallback failures)
-  - `WARN`: Fallback activated, retry exhausted, forced channel shutdown
+  - `WARN`: Fallback activated, retry exhausted, forced channel shutdown, `CONDITIONAL_PERMISSION` treated as denied
   - `INFO`: Monitoring mode results, client creation/close
   - `DEBUG`: Individual check inputs/outputs, cache hits/misses
   - `TRACE`: Raw gRPC request/response (with token redacted)
@@ -501,11 +523,21 @@ tag → Publish workflow → Maven Central staging → validation → release
 
 #### Integration Tests
 
-- **Scope:** End-to-end tests against real SpiceDB instance
+- **Scope:** Tests against a real SpiceDB instance via Testcontainers
 - **Location:** `src/test/java/com/frontegg/sdk/entitlements/integration/`
+- **Maven Profile:** `integration` (`mvn verify -Pintegration`)
+- **Consistency:** Uses `FULLY_CONSISTENT` to ensure deterministic results
 - **Test Infrastructure:**
   - **SpiceDB:** Testcontainers with `authzed/spicedb` Docker image
   - **Schema:** Test SpiceDB schema loaded via test fixtures
+
+#### E2E Tests
+
+- **Scope:** Full end-to-end tests against a real SpiceDB instance covering all query types
+- **Location:** `src/test/java/com/frontegg/sdk/entitlements/e2e/`
+- **Maven Profile:** `e2e` (`mvn verify -Pe2e`)
+- **Consistency:** Uses `FULLY_CONSISTENT` to ensure deterministic results
+- **Coverage:** Feature, Permission, Route, FGA, and Lookup operations
 
 #### Cross-Language Compatibility Tests
 
@@ -597,6 +629,6 @@ Rate limiting and DoS protection are the responsibility of the SpiceDB deploymen
 
 ## Next Steps
 
-1. Add integration tests using Testcontainers against a real SpiceDB instance
-2. Evaluate optional Micrometer companion module for metrics instrumentation
-3. Consider Checkstyle or Spotless for automated style enforcement in CI
+1. Evaluate optional Micrometer companion module for metrics instrumentation
+2. Consider Checkstyle or Spotless for automated style enforcement in CI
+3. Add `AT_LEAST_AS_FRESH` consistency policy with ZedToken support

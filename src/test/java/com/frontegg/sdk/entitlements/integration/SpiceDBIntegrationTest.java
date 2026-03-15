@@ -3,6 +3,7 @@ package com.frontegg.sdk.entitlements.integration;
 import com.frontegg.sdk.entitlements.EntitlementsClient;
 import com.frontegg.sdk.entitlements.EntitlementsClientFactory;
 import com.frontegg.sdk.entitlements.config.ClientConfiguration;
+import com.frontegg.sdk.entitlements.config.ConsistencyPolicy;
 import com.frontegg.sdk.entitlements.model.EntitlementsResult;
 import com.frontegg.sdk.entitlements.model.EntityRequestContext;
 import com.frontegg.sdk.entitlements.model.EntitySubjectContext;
@@ -73,6 +74,7 @@ class SpiceDBIntegrationTest {
                 .engineEndpoint(spicedb.getGrpcEndpoint())
                 .engineToken(spicedb.getPresharedKey())
                 .useTls(false)
+                .consistencyPolicy(ConsistencyPolicy.FULLY_CONSISTENT)
                 .build();
 
         client = EntitlementsClientFactory.create(config);
@@ -563,6 +565,7 @@ class SpiceDBIntegrationTest {
                 .engineEndpoint(spicedb.getGrpcEndpoint())
                 .engineToken(spicedb.getPresharedKey())
                 .useTls(false)
+                .consistencyPolicy(ConsistencyPolicy.FULLY_CONSISTENT)
                 .build();
         EntitlementsClient ephemeral = EntitlementsClientFactory.create(config);
 

@@ -33,6 +33,7 @@
 - **Use `Optional` sparingly:** Only for truly optional return values. Never as method parameters.
 - **Prefer `Supplier<String>` for tokens:** Enables credential rotation without client reinstantiation.
 - **Unchecked exceptions only:** No checked exceptions in the public API.
+- **Fail-closed on ambiguous permissions:** `PERMISSIONSHIP_CONDITIONAL_PERMISSION` from SpiceDB must be treated as denied. Log at `WARN` level with subject/resource context so operators can investigate incomplete caveat context.
 
 ## Error Handling
 
@@ -52,7 +53,7 @@
 - **Library:** SLF4J 2.0.x
 - **Levels:**
   - `ERROR`: Unrecoverable failures
-  - `WARN`: Fallback activated, retry exhausted, forced shutdown
+  - `WARN`: Fallback activated, retry exhausted, forced shutdown, `CONDITIONAL_PERMISSION` treated as denied (fail-closed)
   - `INFO`: Monitoring mode results, client creation/close
   - `DEBUG`: Check inputs/outputs, cache hits/misses
   - `TRACE`: Raw gRPC request/response (token redacted)

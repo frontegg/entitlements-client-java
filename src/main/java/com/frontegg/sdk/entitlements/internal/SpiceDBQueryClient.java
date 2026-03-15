@@ -1,5 +1,6 @@
 package com.frontegg.sdk.entitlements.internal;
 
+import com.authzed.api.v1.Consistency;
 import com.authzed.api.v1.PermissionsServiceGrpc;
 import com.frontegg.sdk.entitlements.config.ClientConfiguration;
 import com.frontegg.sdk.entitlements.model.EntitlementsResult;
@@ -19,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 /**
  * Package-private strategy dispatcher that routes an entitlement check to the correct
@@ -68,11 +70,13 @@ class SpiceDBQueryClient {
                         config.getBulkRequestTimeout().toMillis(), TimeUnit.MILLISECONDS))
                 .lookupSubjects(request);
 
-        this.featureQuery = new FeatureSpiceDBQuery(bulkExecutor);
-        this.permissionQuery = new PermissionSpiceDBQuery(bulkExecutor);
-        this.fgaQuery = new FgaSpiceDBQuery(checkExecutor);
-        this.routeQuery = new RouteSpiceDBQuery(bulkExecutor);
-        this.lookupQuery = new LookupSpiceDBQuery(lookupResourcesExec, lookupSubjectsExec);
+        Supplier<Consistency> consistency = ConsistencyFactory.supplierFor(config.getConsistencyPolicy());
+
+        this.featureQuery = new FeatureSpiceDBQuery(bulkExecutor, consistency);
+        this.permissionQuery = new PermissionSpiceDBQuery(bulkExecutor, consistency);
+        this.fgaQuery = new FgaSpiceDBQuery(checkExecutor, consistency);
+        this.routeQuery = new RouteSpiceDBQuery(bulkExecutor, consistency);
+        this.lookupQuery = new LookupSpiceDBQuery(lookupResourcesExec, lookupSubjectsExec, consistency);
     }
 
     /**
@@ -90,7 +94,8 @@ class SpiceDBQueryClient {
         this.routeQuery = routeQuery;
         this.lookupQuery = new LookupSpiceDBQuery(
                 req -> { throw new UnsupportedOperationException("lookup not wired in test constructor"); },
-                req -> { throw new UnsupportedOperationException("lookup not wired in test constructor"); });
+                req -> { throw new UnsupportedOperationException("lookup not wired in test constructor"); },
+                ConsistencyFactory.supplierFor(com.frontegg.sdk.entitlements.config.ConsistencyPolicy.MINIMIZE_LATENCY));
     }
 
     /**

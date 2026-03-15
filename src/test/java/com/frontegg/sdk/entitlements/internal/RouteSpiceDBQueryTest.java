@@ -38,6 +38,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class RouteSpiceDBQueryTest {
 
+    private static final java.util.function.Supplier<com.authzed.api.v1.Consistency> TEST_CONSISTENCY =
+            () -> com.authzed.api.v1.Consistency.newBuilder().setMinimizeLatency(true).build();
+
     // -------------------------------------------------------------------------
     // Permissionship outcome mapping
     // -------------------------------------------------------------------------
@@ -70,7 +73,7 @@ class RouteSpiceDBQueryTest {
     }
 
     @Test
-    void query_userConditionalPermission_returnsAllowed() {
+    void query_userConditionalPermission_returnsDenied() {
         RouteSpiceDBQuery query = queryWith(
                 permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION),
                 permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION));
@@ -79,11 +82,11 @@ class RouteSpiceDBQueryTest {
                 new UserSubjectContext("user-1", "tenant-1"),
                 new RouteRequestContext("GET", "/api/v1/reports"));
 
-        assertTrue(result.result(), "user conditional permission → result must be true");
+        assertFalse(result.result(), "conditional permission → result must be false (fail-closed)");
     }
 
     @Test
-    void query_tenantConditionalPermission_returnsAllowed() {
+    void query_tenantConditionalPermission_returnsDenied() {
         RouteSpiceDBQuery query = queryWith(
                 permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION),
                 permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION));
@@ -92,7 +95,7 @@ class RouteSpiceDBQueryTest {
                 new UserSubjectContext("user-1", "tenant-1"),
                 new RouteRequestContext("POST", "/api/v1/data"));
 
-        assertTrue(result.result(), "tenant conditional permission → result must be true");
+        assertFalse(result.result(), "conditional permission → result must be false (fail-closed)");
     }
 
     @Test
@@ -119,7 +122,7 @@ class RouteSpiceDBQueryTest {
         RouteSpiceDBQuery query = new RouteSpiceDBQuery(req -> {
             captured.set(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new UserSubjectContext("user-abc", "tenant-xyz"),
@@ -150,7 +153,7 @@ class RouteSpiceDBQueryTest {
         RouteSpiceDBQuery query = new RouteSpiceDBQuery(req -> {
             captured.set(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new UserSubjectContext("user-abc", "tenant-xyz"),
@@ -189,7 +192,7 @@ class RouteSpiceDBQueryTest {
                         .build())
                 .build();
 
-        RouteSpiceDBQuery query = new RouteSpiceDBQuery(req -> errorResponse);
+        RouteSpiceDBQuery query = new RouteSpiceDBQuery(req -> errorResponse, TEST_CONSISTENCY);
 
         assertThrows(EntitlementsQueryException.class,
                 () -> query.query(
@@ -209,7 +212,7 @@ class RouteSpiceDBQueryTest {
         RouteSpiceDBQuery query = new RouteSpiceDBQuery(req -> {
             requests.add(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new UserSubjectContext("user-1", "tenant-1",
@@ -233,7 +236,7 @@ class RouteSpiceDBQueryTest {
         RouteSpiceDBQuery query = new RouteSpiceDBQuery(req -> {
             requests.add(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new UserSubjectContext("user-1", "tenant-1", Map.of()),
@@ -265,7 +268,7 @@ class RouteSpiceDBQueryTest {
         RouteSpiceDBQuery query = new RouteSpiceDBQuery(req -> {
             captured.set(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new UserSubjectContext("user-1", "tenant-1"),
@@ -302,7 +305,7 @@ class RouteSpiceDBQueryTest {
         RouteSpiceDBQuery query = new RouteSpiceDBQuery(req -> {
             captured.set(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new UserSubjectContext("user-1", "tenant-1"),
@@ -334,7 +337,7 @@ class RouteSpiceDBQueryTest {
      */
     private static RouteSpiceDBQuery queryWith(CheckBulkPermissionsResponseItem... items) {
         CheckBulkPermissionsResponse response = responseWith(items);
-        return new RouteSpiceDBQuery(req -> response);
+        return new RouteSpiceDBQuery(req -> response, TEST_CONSISTENCY);
     }
 
     private static CheckBulkPermissionsResponse responseWith(

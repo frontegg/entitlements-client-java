@@ -26,6 +26,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class FgaSpiceDBQueryTest {
 
+    private static final java.util.function.Supplier<com.authzed.api.v1.Consistency> TEST_CONSISTENCY =
+            () -> com.authzed.api.v1.Consistency.newBuilder().setMinimizeLatency(true).build();
+
     // -------------------------------------------------------------------------
     // Permissionship outcome mapping
     // -------------------------------------------------------------------------
@@ -57,7 +60,7 @@ class FgaSpiceDBQueryTest {
     }
 
     @Test
-    void query_conditionalPermission_returnsAllowed() {
+    void query_conditionalPermission_returnsDenied() {
         FgaSpiceDBQuery query = queryWith(
                 CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION);
 
@@ -65,7 +68,7 @@ class FgaSpiceDBQueryTest {
                 new EntitySubjectContext("service_account", "svc-deployer-01"),
                 new EntityRequestContext("document", "doc-789", "viewer"));
 
-        assertTrue(result.result(), "PERMISSIONSHIP_CONDITIONAL_PERMISSION → result must be true");
+        assertFalse(result.result(), "PERMISSIONSHIP_CONDITIONAL_PERMISSION → result must be false (fail-closed)");
         assertFalse(result.monitoring(), "monitoring must be false for normal check");
     }
 
@@ -93,7 +96,7 @@ class FgaSpiceDBQueryTest {
             captured.set(req);
             return permissionResponse(
                     CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new EntitySubjectContext("service_account", "svc-deployer-01"),
@@ -118,7 +121,7 @@ class FgaSpiceDBQueryTest {
             captured.set(req);
             return permissionResponse(
                     CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new EntitySubjectContext("service_account", "svc-deployer-01"),
@@ -143,7 +146,7 @@ class FgaSpiceDBQueryTest {
             captured.set(req);
             return permissionResponse(
                     CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new EntitySubjectContext("service_account", "svc-deployer-01"),
@@ -168,7 +171,7 @@ class FgaSpiceDBQueryTest {
             captured.set(req);
             return permissionResponse(
                     CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
-        });
+        }, TEST_CONSISTENCY);
 
         // Use a value that would produce padding characters in standard Base64
         query.query(
@@ -201,7 +204,7 @@ class FgaSpiceDBQueryTest {
             captured.set(req);
             return permissionResponse(
                     CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new EntitySubjectContext("user", "user@example.com"),
@@ -230,7 +233,7 @@ class FgaSpiceDBQueryTest {
             captured.set(req);
             return permissionResponse(
                     CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION);
-        });
+        }, TEST_CONSISTENCY);
 
         java.time.Instant at = java.time.Instant.parse("2026-02-01T00:00:00Z");
         query.query(
@@ -253,7 +256,7 @@ class FgaSpiceDBQueryTest {
             captured.set(req);
             return permissionResponse(
                     CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new EntitySubjectContext("user", "Alice"),
@@ -273,7 +276,7 @@ class FgaSpiceDBQueryTest {
             captured.set(req);
             return permissionResponse(
                     CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION);
-        });
+        }, TEST_CONSISTENCY);
 
         java.time.Instant at = java.time.Instant.parse("2026-03-15T14:30:00Z");
         query.query(
@@ -298,7 +301,7 @@ class FgaSpiceDBQueryTest {
     private static FgaSpiceDBQuery queryWith(
             CheckPermissionResponse.Permissionship permissionship) {
         CheckPermissionResponse response = permissionResponse(permissionship);
-        return new FgaSpiceDBQuery(req -> response);
+        return new FgaSpiceDBQuery(req -> response, TEST_CONSISTENCY);
     }
 
     private static CheckPermissionResponse permissionResponse(
