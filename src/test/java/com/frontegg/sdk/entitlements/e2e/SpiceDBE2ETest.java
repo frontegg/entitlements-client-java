@@ -92,19 +92,29 @@ class SpiceDBE2ETest {
 
         client = EntitlementsClientFactory.create(config);
 
-        // Debug: test a simple check right after setup
-        System.out.println("=== DEBUG: Testing Tim read_doc Tim's_salary_Jan at 2026-01-01 ===");
+        // Direct check via schema writer stub (bypasses SDK, uses fully_consistent)
+        String directResult = schemaWriter.directCheckPermission(
+                "frontegg_user", "Tim", "document", "Tim's_salary_Jan",
+                "read_doc", "2026-01-01T00:00:00Z");
+        System.out.println("=== DEBUG: DIRECT CheckPermission result=" + directResult + " ===");
+
+        String directNoAt = schemaWriter.directCheckPermission(
+                "frontegg_user", "Tim", "document", "Tim's_salary_Jan",
+                "read_doc", null);
+        System.out.println("=== DEBUG: DIRECT CheckPermission without at=" + directNoAt + " ===");
+
+        // SDK check for comparison
+        System.out.println("=== DEBUG: Testing SDK Tim read_doc Tim's_salary_Jan at 2026-01-01 ===");
         EntitlementsResult debugResult = client.isEntitledTo(
                 new EntitySubjectContext("frontegg_user", "Tim"),
                 new EntityRequestContext("document", "Tim's_salary_Jan", "read_doc",
                         Instant.parse("2026-01-01T00:00:00Z")));
-        System.out.println("=== DEBUG: result=" + debugResult.result() + " ===");
+        System.out.println("=== DEBUG: SDK result=" + debugResult.result() + " ===");
 
-        // Also test WITHOUT caveat context to see if relationship exists at all
         EntitlementsResult debugResult2 = client.isEntitledTo(
                 new EntitySubjectContext("frontegg_user", "Tim"),
                 new EntityRequestContext("document", "Tim's_salary_Jan", "read_doc", null));
-        System.out.println("=== DEBUG: result without at=" + debugResult2.result() + " ===");
+        System.out.println("=== DEBUG: SDK result without at=" + debugResult2.result() + " ===");
     }
 
     @AfterAll

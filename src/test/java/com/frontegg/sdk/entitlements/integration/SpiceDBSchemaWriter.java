@@ -251,6 +251,41 @@ public class SpiceDBSchemaWriter {
     }
 
     /**
+     * Performs a direct CheckPermission call for diagnostics, bypassing the SDK.
+     */
+    public String directCheckPermission(String subjectType, String subjectId,
+                                          String resourceType, String resourceId,
+                                          String permission, String atTimestamp) {
+        com.authzed.api.v1.CheckPermissionRequest.Builder reqBuilder =
+                com.authzed.api.v1.CheckPermissionRequest.newBuilder()
+                        .setConsistency(com.authzed.api.v1.Consistency.newBuilder()
+                                .setFullyConsistent(true)
+                                .build())
+                        .setSubject(com.authzed.api.v1.SubjectReference.newBuilder()
+                                .setObject(ObjectReference.newBuilder()
+                                        .setObjectType(subjectType)
+                                        .setObjectId(encode(subjectId))
+                                        .build())
+                                .build())
+                        .setResource(ObjectReference.newBuilder()
+                                .setObjectType(resourceType)
+                                .setObjectId(encode(resourceId))
+                                .build())
+                        .setPermission(permission);
+
+        if (atTimestamp != null) {
+            reqBuilder.setContext(com.google.protobuf.Struct.newBuilder()
+                    .putFields("at", com.google.protobuf.Value.newBuilder()
+                            .setStringValue(atTimestamp)
+                            .build())
+                    .build());
+        }
+
+        var resp = permissionsStub.checkPermission(reqBuilder.build());
+        return resp.getPermissionship().name();
+    }
+
+    /**
      * Reads back the current schema from SpiceDB (for diagnostics).
      *
      * @return the schema text currently stored in SpiceDB
