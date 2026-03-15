@@ -1,6 +1,6 @@
 services:
   spicedb-cockroachdb:
-    image: cockroachdb/cockroach:latest
+    image: cockroachdb/cockroach:v24.2.6
     ports:
       - '26257:26257'
     volumes:
@@ -18,7 +18,7 @@ services:
       - PGDATABASE=spicedb
 
   spicedb-create-db:
-    image: cockroachdb/cockroach:latest
+    image: cockroachdb/cockroach:v24.2.6
     command:
       [
         'sql',
