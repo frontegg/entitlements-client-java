@@ -43,11 +43,17 @@ class SpiceDBE2ETest {
         String endpoint = System.getProperty("spicedb.endpoint", "localhost:50051");
         String token = System.getProperty("spicedb.token", "spicedb");
 
+        System.out.println("[E2E] SpiceDB endpoint=" + endpoint + " token=" + token);
+
         // Seed schema and relationships via gRPC (idempotent)
         schemaWriter = new SpiceDBSchemaWriter(endpoint, token);
+        System.out.println("[E2E] Writing schema...");
         schemaWriter.writeSchema();
+        System.out.println("[E2E] Schema written. Writing relationships...");
         schemaWriter.writeRelationships();
+        System.out.println("[E2E] Relationships written. Writing caveat relationships...");
         schemaWriter.writeCaveatRelationships();
+        System.out.println("[E2E] All seed data written.");
 
         ClientConfiguration config = ClientConfiguration.builder()
                 .engineEndpoint(endpoint)
@@ -56,6 +62,7 @@ class SpiceDBE2ETest {
                 .build();
 
         client = EntitlementsClientFactory.create(config);
+        System.out.println("[E2E] Client created. Setup complete.");
     }
 
     @AfterAll
