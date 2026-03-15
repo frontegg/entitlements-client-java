@@ -1,6 +1,7 @@
 package com.frontegg.sdk.entitlements.internal;
 
 import com.authzed.api.v1.CheckBulkPermissionsPair;
+import com.authzed.api.v1.Consistency;
 import com.authzed.api.v1.CheckBulkPermissionsRequest;
 import com.authzed.api.v1.CheckBulkPermissionsRequestItem;
 import com.authzed.api.v1.CheckBulkPermissionsResponse;
@@ -76,6 +77,7 @@ class FeatureSpiceDBQuery {
                 TYPE_TENANT, b64TenantId, featureResource, caveatContext);
 
         CheckBulkPermissionsRequest request = CheckBulkPermissionsRequest.newBuilder()
+                .setConsistency(Consistency.newBuilder().setFullyConsistent(true).build())
                 .addItems(userItem)
                 .addItems(tenantItem)
                 .build();

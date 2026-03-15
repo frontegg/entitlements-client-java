@@ -1,6 +1,7 @@
 package com.frontegg.sdk.entitlements.internal;
 
 import com.authzed.api.v1.CheckBulkPermissionsPair;
+import com.authzed.api.v1.Consistency;
 import com.authzed.api.v1.CheckBulkPermissionsRequest;
 import com.authzed.api.v1.CheckBulkPermissionsRequestItem;
 import com.authzed.api.v1.CheckBulkPermissionsResponse;
@@ -74,7 +75,8 @@ class PermissionSpiceDBQuery {
 
         Struct caveatContext = CaveatContextBuilder.build(userCtx.attributes(), permissionCtx.at());
 
-        CheckBulkPermissionsRequest.Builder requestBuilder = CheckBulkPermissionsRequest.newBuilder();
+        CheckBulkPermissionsRequest.Builder requestBuilder = CheckBulkPermissionsRequest.newBuilder()
+                .setConsistency(Consistency.newBuilder().setFullyConsistent(true).build());
 
         for (String permissionKey : permissionCtx.permissionKeys()) {
             String b64PermissionKey = Base64Utils.encode(permissionKey);

@@ -2,6 +2,7 @@ package com.frontegg.sdk.entitlements.internal;
 
 import com.authzed.api.v1.CheckPermissionRequest;
 import com.authzed.api.v1.CheckPermissionResponse;
+import com.authzed.api.v1.Consistency;
 import com.authzed.api.v1.ObjectReference;
 import com.authzed.api.v1.SubjectReference;
 import com.frontegg.sdk.entitlements.model.EntitlementsResult;
@@ -71,6 +72,9 @@ class FgaSpiceDBQuery {
         Struct caveatContext = CaveatContextBuilder.build(null, requestCtx.at());
 
         CheckPermissionRequest.Builder requestBuilder = CheckPermissionRequest.newBuilder()
+                .setConsistency(Consistency.newBuilder()
+                        .setFullyConsistent(true)
+                        .build())
                 .setSubject(subject)
                 .setResource(resource)
                 .setPermission(requestCtx.relation());
@@ -82,12 +86,6 @@ class FgaSpiceDBQuery {
         CheckPermissionRequest request = requestBuilder.build();
 
         CheckPermissionResponse response = executor.execute(request);
-
-        log.info("FGA raw response permissionship={} subject={}:{} resource={}:{} permission={}",
-                response.getPermissionship(),
-                entityCtx.entityType(), b64EntityId,
-                requestCtx.resourceType(), b64ResourceId,
-                requestCtx.relation());
 
         boolean allowed = response.getPermissionship()
                 == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION

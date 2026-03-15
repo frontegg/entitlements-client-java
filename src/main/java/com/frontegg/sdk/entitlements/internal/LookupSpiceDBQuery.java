@@ -1,5 +1,6 @@
 package com.frontegg.sdk.entitlements.internal;
 
+import com.authzed.api.v1.Consistency;
 import com.authzed.api.v1.LookupResourcesResponse;
 import com.authzed.api.v1.LookupSubjectsResponse;
 import com.authzed.api.v1.ObjectReference;
@@ -57,6 +58,7 @@ class LookupSpiceDBQuery {
 
         com.authzed.api.v1.LookupResourcesRequest.Builder grpcRequestBuilder =
                 com.authzed.api.v1.LookupResourcesRequest.newBuilder()
+                        .setConsistency(Consistency.newBuilder().setFullyConsistent(true).build())
                         .setSubject(SubjectReference.newBuilder()
                                 .setObject(ObjectReference.newBuilder()
                                         .setObjectType(request.subjectType())
@@ -78,9 +80,7 @@ class LookupSpiceDBQuery {
         List<String> resourceIds = new ArrayList<>();
         while (responseIterator.hasNext()) {
             LookupResourcesResponse resp = responseIterator.next();
-            String decoded = Base64Utils.decode(resp.getResourceObjectId());
-            log.info("LookupResources found resource: {} (raw={})", decoded, resp.getResourceObjectId());
-            resourceIds.add(decoded);
+            resourceIds.add(Base64Utils.decode(resp.getResourceObjectId()));
         }
 
         log.debug("LookupResources found {} resources subjectType={} subjectId={}",
@@ -106,6 +106,7 @@ class LookupSpiceDBQuery {
 
         com.authzed.api.v1.LookupSubjectsRequest.Builder grpcRequestBuilder =
                 com.authzed.api.v1.LookupSubjectsRequest.newBuilder()
+                        .setConsistency(Consistency.newBuilder().setFullyConsistent(true).build())
                         .setResource(ObjectReference.newBuilder()
                                 .setObjectType(request.resourceType())
                                 .setObjectId(b64ResourceId)

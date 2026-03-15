@@ -45,44 +45,9 @@ class SpiceDBE2ETest {
 
         // Seed schema and relationships via gRPC (idempotent)
         schemaWriter = new SpiceDBSchemaWriter(endpoint, token);
-        try {
-            schemaWriter.writeSchema();
-            System.out.println("=== DEBUG: Schema written OK ===");
-        } catch (Exception e) {
-            System.out.println("=== DEBUG: Schema write FAILED: " + e.getMessage() + " ===");
-            throw e;
-        }
-        try {
-            schemaWriter.writeRelationships();
-            System.out.println("=== DEBUG: Relationships written OK ===");
-        } catch (Exception e) {
-            System.out.println("=== DEBUG: Relationships write FAILED: " + e.getMessage() + " ===");
-            throw e;
-        }
-        try {
-            schemaWriter.writeCaveatRelationships();
-            System.out.println("=== DEBUG: Caveat relationships written OK ===");
-        } catch (Exception e) {
-            System.out.println("=== DEBUG: Caveat relationships write FAILED: " + e.getMessage() + " ===");
-            throw e;
-        }
-
-        // Verify schema was actually written
-        String schema = schemaWriter.readSchema();
-        System.out.println("=== DEBUG: Schema contains 'document': " + schema.contains("document") + " ===");
-        System.out.println("=== DEBUG: Schema contains 'active_at': " + schema.contains("active_at") + " ===");
-
-        // Verify relationships were written
-        var docRels = schemaWriter.readRelationships("document");
-        System.out.println("=== DEBUG: Document relationships count: " + docRels.size() + " ===");
-        for (String rel : docRels) {
-            System.out.println("=== DEBUG: Rel: " + rel + " ===");
-        }
-        var folderRels = schemaWriter.readRelationships("folder");
-        System.out.println("=== DEBUG: Folder relationships count: " + folderRels.size() + " ===");
-        for (String rel : folderRels) {
-            System.out.println("=== DEBUG: Rel: " + rel + " ===");
-        }
+        schemaWriter.writeSchema();
+        schemaWriter.writeRelationships();
+        schemaWriter.writeCaveatRelationships();
 
         ClientConfiguration config = ClientConfiguration.builder()
                 .engineEndpoint(endpoint)
@@ -91,30 +56,6 @@ class SpiceDBE2ETest {
                 .build();
 
         client = EntitlementsClientFactory.create(config);
-
-        // Direct check via schema writer stub (bypasses SDK, uses fully_consistent)
-        String directResult = schemaWriter.directCheckPermission(
-                "frontegg_user", "Tim", "document", "Tim's_salary_Jan",
-                "read_doc", "2026-01-01T00:00:00Z");
-        System.out.println("=== DEBUG: DIRECT CheckPermission result=" + directResult + " ===");
-
-        String directNoAt = schemaWriter.directCheckPermission(
-                "frontegg_user", "Tim", "document", "Tim's_salary_Jan",
-                "read_doc", null);
-        System.out.println("=== DEBUG: DIRECT CheckPermission without at=" + directNoAt + " ===");
-
-        // SDK check for comparison
-        System.out.println("=== DEBUG: Testing SDK Tim read_doc Tim's_salary_Jan at 2026-01-01 ===");
-        EntitlementsResult debugResult = client.isEntitledTo(
-                new EntitySubjectContext("frontegg_user", "Tim"),
-                new EntityRequestContext("document", "Tim's_salary_Jan", "read_doc",
-                        Instant.parse("2026-01-01T00:00:00Z")));
-        System.out.println("=== DEBUG: SDK result=" + debugResult.result() + " ===");
-
-        EntitlementsResult debugResult2 = client.isEntitledTo(
-                new EntitySubjectContext("frontegg_user", "Tim"),
-                new EntityRequestContext("document", "Tim's_salary_Jan", "read_doc", null));
-        System.out.println("=== DEBUG: SDK result without at=" + debugResult2.result() + " ===");
     }
 
     @AfterAll

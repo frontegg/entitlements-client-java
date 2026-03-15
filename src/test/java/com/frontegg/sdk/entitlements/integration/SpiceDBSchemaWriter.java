@@ -85,10 +85,9 @@ public class SpiceDBSchemaWriter {
                 }
                 """;
 
-        var schemaResponse = schemaStub.writeSchema(WriteSchemaRequest.newBuilder()
+        schemaStub.writeSchema(WriteSchemaRequest.newBuilder()
                 .setSchema(schema)
                 .build());
-        System.out.println("=== DEBUG: writeSchema response writtenAt=" + schemaResponse.getWrittenAt() + " ===");
     }
 
     /**
@@ -131,8 +130,7 @@ public class SpiceDBSchemaWriter {
                 .addUpdates(buildUpdate("document", encode("doc-2"), "editor",
                         "frontegg_user", encode("user-1")))
                 .build();
-        var response = permissionsStub.writeRelationships(request);
-        System.out.println("=== DEBUG: writeRelationships response writtenAt=" + response.getWrittenAt() + " ===");
+        permissionsStub.writeRelationships(request);
     }
 
     /**
@@ -178,8 +176,7 @@ public class SpiceDBSchemaWriter {
                         "folder", encode("salaries"),
                         "active_at", "2026-03-01T00:00:00.000Z", null))
                 .build();
-        var caveatResponse = permissionsStub.writeRelationships(request);
-        System.out.println("=== DEBUG: writeCaveatRelationships response writtenAt=" + caveatResponse.getWrittenAt() + " ===");
+        permissionsStub.writeRelationships(request);
     }
 
     private static RelationshipUpdate buildUpdate(String resourceType, String resourceId,
@@ -248,79 +245,6 @@ public class SpiceDBSchemaWriter {
         return Base64.getUrlEncoder()
                 .withoutPadding()
                 .encodeToString(value.getBytes(StandardCharsets.UTF_8));
-    }
-
-    /**
-     * Performs a direct CheckPermission call for diagnostics, bypassing the SDK.
-     */
-    public String directCheckPermission(String subjectType, String subjectId,
-                                          String resourceType, String resourceId,
-                                          String permission, String atTimestamp) {
-        com.authzed.api.v1.CheckPermissionRequest.Builder reqBuilder =
-                com.authzed.api.v1.CheckPermissionRequest.newBuilder()
-                        .setConsistency(com.authzed.api.v1.Consistency.newBuilder()
-                                .setFullyConsistent(true)
-                                .build())
-                        .setSubject(com.authzed.api.v1.SubjectReference.newBuilder()
-                                .setObject(ObjectReference.newBuilder()
-                                        .setObjectType(subjectType)
-                                        .setObjectId(encode(subjectId))
-                                        .build())
-                                .build())
-                        .setResource(ObjectReference.newBuilder()
-                                .setObjectType(resourceType)
-                                .setObjectId(encode(resourceId))
-                                .build())
-                        .setPermission(permission);
-
-        if (atTimestamp != null) {
-            reqBuilder.setContext(com.google.protobuf.Struct.newBuilder()
-                    .putFields("at", com.google.protobuf.Value.newBuilder()
-                            .setStringValue(atTimestamp)
-                            .build())
-                    .build());
-        }
-
-        var resp = permissionsStub.checkPermission(reqBuilder.build());
-        return resp.getPermissionship().name();
-    }
-
-    /**
-     * Reads back the current schema from SpiceDB (for diagnostics).
-     *
-     * @return the schema text currently stored in SpiceDB
-     */
-    public String readSchema() {
-        var response = schemaStub.readSchema(
-                com.authzed.api.v1.ReadSchemaRequest.newBuilder().build());
-        return response.getSchemaText();
-    }
-
-    /**
-     * Reads back all relationships for a given resource type (for diagnostics).
-     *
-     * @return list of relationship strings
-     */
-    public java.util.List<String> readRelationships(String resourceType) {
-        var response = permissionsStub.readRelationships(
-                com.authzed.api.v1.ReadRelationshipsRequest.newBuilder()
-                        .setConsistency(com.authzed.api.v1.Consistency.newBuilder()
-                                .setFullyConsistent(true)
-                                .build())
-                        .setRelationshipFilter(com.authzed.api.v1.RelationshipFilter.newBuilder()
-                                .setResourceType(resourceType)
-                                .build())
-                        .build());
-        java.util.List<String> results = new java.util.ArrayList<>();
-        while (response.hasNext()) {
-            var r = response.next().getRelationship();
-            results.add(r.getResource().getObjectType() + ":" + r.getResource().getObjectId()
-                    + "#" + r.getRelation()
-                    + "@" + r.getSubject().getObject().getObjectType() + ":" + r.getSubject().getObject().getObjectId()
-                    + (r.hasOptionalCaveat() && !r.getOptionalCaveat().getCaveatName().isEmpty()
-                            ? "[" + r.getOptionalCaveat().getCaveatName() + "]" : ""));
-        }
-        return results;
     }
 
     /**
