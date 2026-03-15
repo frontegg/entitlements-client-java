@@ -78,7 +78,9 @@ class LookupSpiceDBQuery {
         List<String> resourceIds = new ArrayList<>();
         while (responseIterator.hasNext()) {
             LookupResourcesResponse resp = responseIterator.next();
-            resourceIds.add(Base64Utils.decode(resp.getResourceObjectId()));
+            String decoded = Base64Utils.decode(resp.getResourceObjectId());
+            log.info("LookupResources found resource: {} (raw={})", decoded, resp.getResourceObjectId());
+            resourceIds.add(decoded);
         }
 
         log.debug("LookupResources found {} resources subjectType={} subjectId={}",

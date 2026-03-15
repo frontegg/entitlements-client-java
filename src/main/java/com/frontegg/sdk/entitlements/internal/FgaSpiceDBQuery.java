@@ -83,6 +83,12 @@ class FgaSpiceDBQuery {
 
         CheckPermissionResponse response = executor.execute(request);
 
+        log.info("FGA raw response permissionship={} subject={}:{} resource={}:{} permission={}",
+                response.getPermissionship(),
+                entityCtx.entityType(), b64EntityId,
+                requestCtx.resourceType(), b64ResourceId,
+                requestCtx.relation());
+
         boolean allowed = response.getPermissionship()
                 == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION
                 || response.getPermissionship()

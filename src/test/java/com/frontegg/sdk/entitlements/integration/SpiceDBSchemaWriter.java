@@ -85,9 +85,10 @@ public class SpiceDBSchemaWriter {
                 }
                 """;
 
-        schemaStub.writeSchema(WriteSchemaRequest.newBuilder()
+        var schemaResponse = schemaStub.writeSchema(WriteSchemaRequest.newBuilder()
                 .setSchema(schema)
                 .build());
+        System.out.println("=== DEBUG: writeSchema response writtenAt=" + schemaResponse.getWrittenAt() + " ===");
     }
 
     /**
@@ -130,7 +131,8 @@ public class SpiceDBSchemaWriter {
                 .addUpdates(buildUpdate("document", encode("doc-2"), "editor",
                         "frontegg_user", encode("user-1")))
                 .build();
-        permissionsStub.writeRelationships(request);
+        var response = permissionsStub.writeRelationships(request);
+        System.out.println("=== DEBUG: writeRelationships response writtenAt=" + response.getWrittenAt() + " ===");
     }
 
     /**
@@ -176,7 +178,8 @@ public class SpiceDBSchemaWriter {
                         "folder", encode("salaries"),
                         "active_at", "2026-03-01T00:00:00.000Z", null))
                 .build();
-        permissionsStub.writeRelationships(request);
+        var caveatResponse = permissionsStub.writeRelationships(request);
+        System.out.println("=== DEBUG: writeCaveatRelationships response writtenAt=" + caveatResponse.getWrittenAt() + " ===");
     }
 
     private static RelationshipUpdate buildUpdate(String resourceType, String resourceId,
@@ -266,6 +269,9 @@ public class SpiceDBSchemaWriter {
     public java.util.List<String> readRelationships(String resourceType) {
         var response = permissionsStub.readRelationships(
                 com.authzed.api.v1.ReadRelationshipsRequest.newBuilder()
+                        .setConsistency(com.authzed.api.v1.Consistency.newBuilder()
+                                .setFullyConsistent(true)
+                                .build())
                         .setRelationshipFilter(com.authzed.api.v1.RelationshipFilter.newBuilder()
                                 .setResourceType(resourceType)
                                 .build())
