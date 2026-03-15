@@ -12,16 +12,17 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Starting SpiceDB infrastructure..."
-docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d --wait
+docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d
 
 echo "Waiting for SpiceDB to be ready..."
-for i in $(seq 1 30); do
+for i in $(seq 1 60); do
     if docker compose -f "$SCRIPT_DIR/docker-compose.yml" exec -T spicedb grpc_health_probe -addr=:50051 > /dev/null 2>&1; then
         echo "SpiceDB is ready."
         break
     fi
-    if [ "$i" -eq 30 ]; then
+    if [ "$i" -eq 60 ]; then
         echo "ERROR: SpiceDB did not become ready in time."
+        docker compose -f "$SCRIPT_DIR/docker-compose.yml" logs spicedb
         exit 1
     fi
     sleep 2

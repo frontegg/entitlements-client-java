@@ -36,16 +36,18 @@ jobs:
           distribution: temurin
           cache: maven
       - name: Start SpiceDB
-        run: docker compose -f e2e/docker-compose.yml up -d --wait
+        run: docker compose -f e2e/docker-compose.yml up -d
       - name: Wait for SpiceDB readiness
         run: |
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if docker compose -f e2e/docker-compose.yml exec -T spicedb grpc_health_probe -addr=:50051 > /dev/null 2>&1; then
               echo "SpiceDB is ready"
               break
             fi
-            if [ "$i" -eq 30 ]; then
-              echo "SpiceDB did not become ready" && exit 1
+            if [ "$i" -eq 60 ]; then
+              echo "SpiceDB did not become ready"
+              docker compose -f e2e/docker-compose.yml logs spicedb
+              exit 1
             fi
             sleep 2
           done
