@@ -308,7 +308,6 @@
                             <includes>
                                 <include>**/e2e/**Test.java</include>
                             </includes>
-                            <redirectTestOutputToFile>false</redirectTestOutputToFile>
                             <systemPropertyVariables>
                                 <spicedb.endpoint>${spicedb.endpoint}</spicedb.endpoint>
                                 <spicedb.token>${spicedb.token}</spicedb.token>
