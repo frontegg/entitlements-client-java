@@ -48,8 +48,7 @@ services:
 
   spicedb:
     image: authzed/spicedb:v1.42.1
-    cpus: 0.5
-    mem_limit: 512m
+    restart: on-failure
     ports:
       - '50051:50051'
     volumes:
