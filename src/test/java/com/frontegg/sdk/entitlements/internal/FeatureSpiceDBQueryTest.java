@@ -33,6 +33,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class FeatureSpiceDBQueryTest {
 
+    private static final java.util.function.Supplier<com.authzed.api.v1.Consistency> TEST_CONSISTENCY =
+            () -> com.authzed.api.v1.Consistency.newBuilder().setMinimizeLatency(true).build();
+
     // -------------------------------------------------------------------------
     // Permissionship outcome mapping
     // -------------------------------------------------------------------------
@@ -65,6 +68,32 @@ class FeatureSpiceDBQueryTest {
     }
 
     @Test
+    void query_userConditionalPermission_returnsDenied() {
+        FeatureSpiceDBQuery query = queryWith(
+                permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION),
+                permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION));
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new FeatureRequestContext("feature-key"));
+
+        assertFalse(result.result(), "conditional permission → result must be false (fail-closed)");
+    }
+
+    @Test
+    void query_tenantConditionalPermission_returnsDenied() {
+        FeatureSpiceDBQuery query = queryWith(
+                permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION),
+                permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION));
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new FeatureRequestContext("feature-key"));
+
+        assertFalse(result.result(), "conditional permission → result must be false (fail-closed)");
+    }
+
+    @Test
     void query_bothDenied_returnsDenied() {
         FeatureSpiceDBQuery query = queryWith(
                 permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION),
@@ -88,7 +117,7 @@ class FeatureSpiceDBQueryTest {
         FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(req -> {
             captured.set(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new UserSubjectContext("user-abc", "tenant-xyz"),
@@ -124,7 +153,7 @@ class FeatureSpiceDBQueryTest {
         FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(req -> {
             requests.add(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new UserSubjectContext("user-1", "tenant-1",
@@ -148,7 +177,7 @@ class FeatureSpiceDBQueryTest {
         FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(req -> {
             requests.add(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new UserSubjectContext("user-1", "tenant-1", Map.of()),
@@ -173,7 +202,7 @@ class FeatureSpiceDBQueryTest {
         FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(req -> {
             requests.add(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new UserSubjectContext("user-1", "tenant-1"),
@@ -199,7 +228,7 @@ class FeatureSpiceDBQueryTest {
         FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(req -> {
             requests.add(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new UserSubjectContext("user-1", "tenant-1", Map.of("plan", "enterprise")),
@@ -222,7 +251,7 @@ class FeatureSpiceDBQueryTest {
         FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(req -> {
             requests.add(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         // Explicitly pass null at — same as convenience constructor
         query.query(
@@ -246,7 +275,7 @@ class FeatureSpiceDBQueryTest {
      */
     private static FeatureSpiceDBQuery queryWith(CheckBulkPermissionsResponseItem... items) {
         CheckBulkPermissionsResponse response = responseWith(items);
-        return new FeatureSpiceDBQuery(req -> response);
+        return new FeatureSpiceDBQuery(req -> response, TEST_CONSISTENCY);
     }
 
     private static CheckBulkPermissionsResponse responseWith(

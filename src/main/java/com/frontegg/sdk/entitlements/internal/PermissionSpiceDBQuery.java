@@ -1,6 +1,7 @@
 package com.frontegg.sdk.entitlements.internal;
 
 import com.authzed.api.v1.CheckBulkPermissionsPair;
+import com.authzed.api.v1.Consistency;
 import com.authzed.api.v1.CheckBulkPermissionsRequest;
 import com.authzed.api.v1.CheckBulkPermissionsRequestItem;
 import com.authzed.api.v1.CheckBulkPermissionsResponse;
@@ -16,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -49,9 +51,11 @@ class PermissionSpiceDBQuery {
     private static final String TYPE_PERMISSION = "frontegg_permission";
 
     private final BulkPermissionsExecutor executor;
+    private final Supplier<Consistency> consistencySupplier;
 
-    PermissionSpiceDBQuery(BulkPermissionsExecutor executor) {
+    PermissionSpiceDBQuery(BulkPermissionsExecutor executor, Supplier<Consistency> consistencySupplier) {
         this.executor = executor;
+        this.consistencySupplier = consistencySupplier;
     }
 
     /**
@@ -74,7 +78,8 @@ class PermissionSpiceDBQuery {
 
         Struct caveatContext = CaveatContextBuilder.build(userCtx.attributes(), permissionCtx.at());
 
-        CheckBulkPermissionsRequest.Builder requestBuilder = CheckBulkPermissionsRequest.newBuilder();
+        CheckBulkPermissionsRequest.Builder requestBuilder = CheckBulkPermissionsRequest.newBuilder()
+                .setConsistency(consistencySupplier.get());
 
         for (String permissionKey : permissionCtx.permissionKeys()) {
             String b64PermissionKey = Base64Utils.encode(permissionKey);
@@ -95,6 +100,17 @@ class PermissionSpiceDBQuery {
                 throw new EntitlementsQueryException(
                         "SpiceDB returned an error for bulk permission check: " + pair.getError().getMessage());
             }
+        }
+
+        boolean hasConditional = response.getPairsList().stream()
+                .filter(CheckBulkPermissionsPair::hasItem)
+                .anyMatch(pair -> pair.getItem().getPermissionship()
+                        == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION);
+        if (hasConditional) {
+            log.warn("SpiceDB returned CONDITIONAL_PERMISSION for permission check "
+                    + "userId={} permissionKeys={} — treating as denied (fail-closed). "
+                    + "Ensure caveat context is fully populated.",
+                    userCtx.userId(), permissionCtx.permissionKeys());
         }
 
         // Collect all resource IDs (base64 permission keys) that have PERMISSIONSHIP_HAS_PERMISSION

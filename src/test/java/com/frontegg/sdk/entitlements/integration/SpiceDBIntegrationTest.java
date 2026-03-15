@@ -3,6 +3,7 @@ package com.frontegg.sdk.entitlements.integration;
 import com.frontegg.sdk.entitlements.EntitlementsClient;
 import com.frontegg.sdk.entitlements.EntitlementsClientFactory;
 import com.frontegg.sdk.entitlements.config.ClientConfiguration;
+import com.frontegg.sdk.entitlements.config.ConsistencyPolicy;
 import com.frontegg.sdk.entitlements.model.EntitlementsResult;
 import com.frontegg.sdk.entitlements.model.EntityRequestContext;
 import com.frontegg.sdk.entitlements.model.EntitySubjectContext;
@@ -13,6 +14,8 @@ import com.frontegg.sdk.entitlements.model.LookupSubjectsRequest;
 import com.frontegg.sdk.entitlements.model.PermissionRequestContext;
 import com.frontegg.sdk.entitlements.model.RouteRequestContext;
 import com.frontegg.sdk.entitlements.model.UserSubjectContext;
+
+import java.time.Instant;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -65,11 +68,13 @@ class SpiceDBIntegrationTest {
                 spicedb.getGrpcEndpoint(), spicedb.getPresharedKey());
         schemaWriter.writeSchema();
         schemaWriter.writeRelationships();
+        schemaWriter.writeCaveatRelationships();
 
         ClientConfiguration config = ClientConfiguration.builder()
                 .engineEndpoint(spicedb.getGrpcEndpoint())
                 .engineToken(spicedb.getPresharedKey())
                 .useTls(false)
+                .consistencyPolicy(ConsistencyPolicy.FULLY_CONSISTENT)
                 .build();
 
         client = EntitlementsClientFactory.create(config);
@@ -368,6 +373,187 @@ class SpiceDBIntegrationTest {
     }
 
     // -------------------------------------------------------------------------
+    // Caveat-based FGA checks (time-gated access — ported from Node.js demo)
+    // -------------------------------------------------------------------------
+
+    @Test
+    @Order(70)
+    void caveatFga_timDirectReader_entitledAfterActiveFrom() {
+        // Tim is direct reader of Jan salary doc with activeFrom=2026-01-01
+        // Checking at 2026-01-01 should be entitled
+        EntitlementsResult result = client.isEntitledTo(
+                new EntitySubjectContext("frontegg_user", "Tim"),
+                new EntityRequestContext("document", "Tim's_salary_Jan", "read_doc",
+                        Instant.parse("2026-01-01T00:00:00Z")));
+        assertTrue(result.result(),
+                "Tim should be entitled to read Jan salary doc at 2026-01-01 (activeFrom)");
+    }
+
+    @Test
+    @Order(71)
+    void caveatFga_timDirectReader_deniedBeforeActiveFrom() {
+        // Tim is direct reader of Feb salary doc with activeFrom=2026-02-01
+        // Checking at 2026-01-01 should be denied (before activeFrom)
+        EntitlementsResult result = client.isEntitledTo(
+                new EntitySubjectContext("frontegg_user", "Tim"),
+                new EntityRequestContext("document", "Tim's_salary_Feb", "read_doc",
+                        Instant.parse("2026-01-01T00:00:00Z")));
+        assertFalse(result.result(),
+                "Tim should be denied Feb salary doc at 2026-01-01 (before activeFrom of 2026-02-01)");
+    }
+
+    @Test
+    @Order(72)
+    void caveatFga_timDirectReader_entitledAtActiveFrom() {
+        // Tim is direct reader of Feb salary doc with activeFrom=2026-02-01
+        // Checking at 2026-02-01 should be entitled
+        EntitlementsResult result = client.isEntitledTo(
+                new EntitySubjectContext("frontegg_user", "Tim"),
+                new EntityRequestContext("document", "Tim's_salary_Feb", "read_doc",
+                        Instant.parse("2026-02-01T00:00:00Z")));
+        assertTrue(result.result(),
+                "Tim should be entitled to read Feb salary doc at 2026-02-01 (exact activeFrom)");
+    }
+
+    @Test
+    @Order(73)
+    void caveatFga_timDirectReader_marchDocEntitledAtMarch() {
+        // Tim is direct reader of Mar salary doc with activeFrom=2026-03-01
+        EntitlementsResult result = client.isEntitledTo(
+                new EntitySubjectContext("frontegg_user", "Tim"),
+                new EntityRequestContext("document", "Tim's_salary_Mar", "read_doc",
+                        Instant.parse("2026-03-01T00:00:00Z")));
+        assertTrue(result.result(),
+                "Tim should be entitled to read Mar salary doc at 2026-03-01");
+    }
+
+    @Test
+    @Order(74)
+    void caveatFga_timDirectReader_marchDocDeniedBeforeMarch() {
+        EntitlementsResult result = client.isEntitledTo(
+                new EntitySubjectContext("frontegg_user", "Tim"),
+                new EntityRequestContext("document", "Tim's_salary_Mar", "read_doc",
+                        Instant.parse("2026-02-15T00:00:00Z")));
+        assertFalse(result.result(),
+                "Tim should be denied Mar salary doc at 2026-02-15 (before activeFrom)");
+    }
+
+    // -------------------------------------------------------------------------
+    // Permission inheritance through folder (Alice reads via folder membership)
+    // -------------------------------------------------------------------------
+
+    @Test
+    @Order(75)
+    void caveatFga_aliceInheritance_canReadDocViaFolder() {
+        // Alice is reader of "salaries" folder (no caveat)
+        // Jan salary doc has "salaries" folder as parent with activeFrom=2026-01-01
+        // At 2026-02-01, the parent relation is active → Alice inherits read_doc
+        EntitlementsResult result = client.isEntitledTo(
+                new EntitySubjectContext("frontegg_user", "Alice"),
+                new EntityRequestContext("document", "Tim's_salary_Jan", "read_doc",
+                        Instant.parse("2026-02-01T00:00:00Z")));
+        assertTrue(result.result(),
+                "Alice should read Jan salary doc via folder inheritance at 2026-02-01");
+    }
+
+    @Test
+    @Order(76)
+    void caveatFga_aliceInheritance_deniedBeforeParentActiveFrom() {
+        // Feb salary doc parent has activeFrom=2026-02-01
+        // At 2026-01-15, the parent relation is not yet active → Alice cannot inherit
+        EntitlementsResult result = client.isEntitledTo(
+                new EntitySubjectContext("frontegg_user", "Alice"),
+                new EntityRequestContext("document", "Tim's_salary_Feb", "read_doc",
+                        Instant.parse("2026-01-15T00:00:00Z")));
+        assertFalse(result.result(),
+                "Alice should be denied Feb salary doc at 2026-01-15 (parent not yet active)");
+    }
+
+    // -------------------------------------------------------------------------
+    // Time-filtered lookupResources
+    // -------------------------------------------------------------------------
+
+    @Test
+    @Order(80)
+    void lookupResources_withAt_returnsOnlyTimeValidDocs() {
+        // Tim at 2026-01-01 should only be able to read the Jan salary doc
+        LookupResult result = client.lookupResources(
+                new LookupResourcesRequest("frontegg_user", "Tim", "read_doc", "document",
+                        Instant.parse("2026-01-01T00:00:00Z")));
+        assertNotNull(result);
+        assertTrue(result.entityIds().contains("Tim's_salary_Jan"),
+                "Jan doc should be in results at 2026-01-01");
+        assertFalse(result.entityIds().contains("Tim's_salary_Feb"),
+                "Feb doc should NOT be in results at 2026-01-01");
+        assertFalse(result.entityIds().contains("Tim's_salary_Mar"),
+                "Mar doc should NOT be in results at 2026-01-01");
+    }
+
+    @Test
+    @Order(81)
+    void lookupResources_withAt_february_returnsJanAndFeb() {
+        // Tim at 2026-02-01 should be able to read Jan and Feb salary docs
+        LookupResult result = client.lookupResources(
+                new LookupResourcesRequest("frontegg_user", "Tim", "read_doc", "document",
+                        Instant.parse("2026-02-01T00:00:00Z")));
+        assertNotNull(result);
+        assertTrue(result.entityIds().contains("Tim's_salary_Jan"),
+                "Jan doc should be in results at 2026-02-01");
+        assertTrue(result.entityIds().contains("Tim's_salary_Feb"),
+                "Feb doc should be in results at 2026-02-01");
+        assertFalse(result.entityIds().contains("Tim's_salary_Mar"),
+                "Mar doc should NOT be in results at 2026-02-01");
+    }
+
+    @Test
+    @Order(82)
+    void lookupResources_withAt_march_returnsAllThree() {
+        // Tim at 2026-03-01 should be able to read all three salary docs
+        LookupResult result = client.lookupResources(
+                new LookupResourcesRequest("frontegg_user", "Tim", "read_doc", "document",
+                        Instant.parse("2026-03-01T00:00:00Z")));
+        assertNotNull(result);
+        assertTrue(result.entityIds().contains("Tim's_salary_Jan"),
+                "Jan doc should be in results at 2026-03-01");
+        assertTrue(result.entityIds().contains("Tim's_salary_Feb"),
+                "Feb doc should be in results at 2026-03-01");
+        assertTrue(result.entityIds().contains("Tim's_salary_Mar"),
+                "Mar doc should be in results at 2026-03-01");
+    }
+
+    // -------------------------------------------------------------------------
+    // Time-filtered lookupSubjects
+    // -------------------------------------------------------------------------
+
+    @Test
+    @Order(85)
+    void lookupSubjects_withAt_janDoc_returnsTimAndAlice() {
+        // At 2026-02-01: Tim is direct reader (activeFrom=Jan), Alice inherits via folder (parent activeFrom=Jan)
+        LookupResult result = client.lookupSubjects(
+                new LookupSubjectsRequest("document", "Tim's_salary_Jan", "read_doc", "frontegg_user",
+                        Instant.parse("2026-02-01T00:00:00Z")));
+        assertNotNull(result);
+        assertTrue(result.entityIds().contains("Tim"),
+                "Tim should be a reader of Jan salary doc at 2026-02-01");
+        assertTrue(result.entityIds().contains("Alice"),
+                "Alice should be a reader of Jan salary doc at 2026-02-01 via folder inheritance");
+    }
+
+    @Test
+    @Order(86)
+    void lookupSubjects_withAt_febDocBeforeFeb_excludesTimAndAlice() {
+        // At 2026-01-15: Feb doc has activeFrom=2026-02-01 for both Tim's reader and folder parent
+        LookupResult result = client.lookupSubjects(
+                new LookupSubjectsRequest("document", "Tim's_salary_Feb", "read_doc", "frontegg_user",
+                        Instant.parse("2026-01-15T00:00:00Z")));
+        assertNotNull(result);
+        assertFalse(result.entityIds().contains("Tim"),
+                "Tim should NOT be a reader of Feb salary doc at 2026-01-15");
+        assertFalse(result.entityIds().contains("Alice"),
+                "Alice should NOT be a reader of Feb salary doc at 2026-01-15");
+    }
+
+    // -------------------------------------------------------------------------
     // Client lifecycle
     // -------------------------------------------------------------------------
 
@@ -379,6 +565,7 @@ class SpiceDBIntegrationTest {
                 .engineEndpoint(spicedb.getGrpcEndpoint())
                 .engineToken(spicedb.getPresharedKey())
                 .useTls(false)
+                .consistencyPolicy(ConsistencyPolicy.FULLY_CONSISTENT)
                 .build();
         EntitlementsClient ephemeral = EntitlementsClientFactory.create(config);
 

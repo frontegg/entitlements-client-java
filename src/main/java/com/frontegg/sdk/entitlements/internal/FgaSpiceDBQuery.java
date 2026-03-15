@@ -2,13 +2,17 @@ package com.frontegg.sdk.entitlements.internal;
 
 import com.authzed.api.v1.CheckPermissionRequest;
 import com.authzed.api.v1.CheckPermissionResponse;
+import com.authzed.api.v1.Consistency;
 import com.authzed.api.v1.ObjectReference;
 import com.authzed.api.v1.SubjectReference;
 import com.frontegg.sdk.entitlements.model.EntitlementsResult;
 import com.frontegg.sdk.entitlements.model.EntityRequestContext;
 import com.frontegg.sdk.entitlements.model.EntitySubjectContext;
+import com.google.protobuf.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.function.Supplier;
 
 /**
  * Package-private query strategy that handles fine-grained authorization (FGA) checks
@@ -33,9 +37,11 @@ class FgaSpiceDBQuery {
     private static final Logger log = LoggerFactory.getLogger(FgaSpiceDBQuery.class);
 
     private final CheckPermissionExecutor executor;
+    private final Supplier<Consistency> consistencySupplier;
 
-    FgaSpiceDBQuery(CheckPermissionExecutor executor) {
+    FgaSpiceDBQuery(CheckPermissionExecutor executor, Supplier<Consistency> consistencySupplier) {
         this.executor = executor;
+        this.consistencySupplier = consistencySupplier;
     }
 
     /**
@@ -67,13 +73,31 @@ class FgaSpiceDBQuery {
                 .setObjectId(b64ResourceId)
                 .build();
 
-        CheckPermissionRequest request = CheckPermissionRequest.newBuilder()
+        Struct caveatContext = CaveatContextBuilder.build(null, requestCtx.at());
+
+        CheckPermissionRequest.Builder requestBuilder = CheckPermissionRequest.newBuilder()
+                .setConsistency(consistencySupplier.get())
                 .setSubject(subject)
                 .setResource(resource)
-                .setPermission(requestCtx.relation())
-                .build();
+                .setPermission(requestCtx.relation());
+
+        if (caveatContext != null) {
+            requestBuilder.setContext(caveatContext);
+        }
+
+        CheckPermissionRequest request = requestBuilder.build();
 
         CheckPermissionResponse response = executor.execute(request);
+
+        if (response.getPermissionship()
+                == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION) {
+            log.warn("SpiceDB returned CONDITIONAL_PERMISSION for FGA check "
+                    + "entityType={} entityId={} resourceType={} resourceId={} relation={} "
+                    + "— treating as denied (fail-closed). Ensure caveat context is fully populated.",
+                    entityCtx.entityType(), entityCtx.entityId(),
+                    requestCtx.resourceType(), requestCtx.resourceId(),
+                    requestCtx.relation());
+        }
 
         boolean allowed = response.getPermissionship()
                 == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION;

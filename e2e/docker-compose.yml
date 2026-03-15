@@ -1,0 +1,19 @@
+services:
+  spicedb:
+    image: authzed/spicedb:v1.42.1
+    ports:
+      - '50051:50051'
+    command:
+      [
+        'serve',
+        '--datastore-engine=memory',
+        '--log-level=info'
+      ]
+    environment:
+      - SPICEDB_GRPC_PRESHARED_KEY=${SPICEDB_GRPC_PRESHARED_KEY:-spicedb}
+    healthcheck:
+      test: ['CMD', 'grpc_health_probe', '-addr=:50051']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s

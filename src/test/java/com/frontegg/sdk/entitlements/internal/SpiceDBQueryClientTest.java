@@ -40,15 +40,18 @@ class SpiceDBQueryClientTest {
 
     @BeforeEach
     void setUp() {
+        java.util.function.Supplier<com.authzed.api.v1.Consistency> consistency =
+                () -> com.authzed.api.v1.Consistency.newBuilder().setMinimizeLatency(true).build();
+
         FeatureSpiceDBQuery capturedFeatureQuery = new FeatureSpiceDBQuery(req -> {
             featureQueryInvoked.set(true);
             return CheckBulkPermissionsResponse.newBuilder().build();
-        });
+        }, consistency);
 
         PermissionSpiceDBQuery capturedPermissionQuery = new PermissionSpiceDBQuery(req -> {
             permissionQueryInvoked.set(true);
             return CheckBulkPermissionsResponse.newBuilder().build();
-        });
+        }, consistency);
 
         FgaSpiceDBQuery capturedFgaQuery = new FgaSpiceDBQuery(req -> {
             fgaQueryInvoked.set(true);
@@ -56,12 +59,12 @@ class SpiceDBQueryClientTest {
                     .setPermissionship(
                             CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION)
                     .build();
-        });
+        }, consistency);
 
         RouteSpiceDBQuery capturedRouteQuery = new RouteSpiceDBQuery(req -> {
             routeQueryInvoked.set(true);
             return CheckBulkPermissionsResponse.newBuilder().build();
-        });
+        }, consistency);
 
         queryClient = new SpiceDBQueryClient(capturedFeatureQuery, capturedPermissionQuery,
                 capturedFgaQuery, capturedRouteQuery);

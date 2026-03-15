@@ -188,6 +188,7 @@ fields are validated in `build()`.
 ```java
 import com.frontegg.sdk.entitlements.config.ClientConfiguration;
 import com.frontegg.sdk.entitlements.config.CacheConfiguration;
+import com.frontegg.sdk.entitlements.config.ConsistencyPolicy;
 import com.frontegg.sdk.entitlements.fallback.StaticFallback;
 
 import java.time.Duration;
@@ -219,6 +220,10 @@ ClientConfiguration config = ClientConfiguration.builder()
         // Optional: enable monitoring mode (see Monitoring Mode section). Default: false.
         .monitoring(false)
 
+        // Optional: SpiceDB read consistency. Default: MINIMIZE_LATENCY.
+        //           Use FULLY_CONSISTENT when read-after-write consistency is required.
+        .consistencyPolicy(ConsistencyPolicy.MINIMIZE_LATENCY)
+
         // Optional: enable in-memory result caching (see Caching section). Default: disabled.
         .cacheConfiguration(CacheConfiguration.defaults())
 
@@ -237,6 +242,7 @@ ClientConfiguration config = ClientConfiguration.builder()
 | `maxRetries`          | `int`                          | `3`          | No       | Maximum retry attempts with exponential backoff before the fallback is invoked or the exception propagates.   |
 | `useTls`              | `boolean`                      | `true`       | No       | Whether to use TLS on the gRPC channel. Disable only for local development.                                   |
 | `monitoring`          | `boolean`                      | `false`      | No       | When `true`, checks are evaluated and logged but always return `allowed`. See [Monitoring Mode](#monitoring-mode). |
+| `consistencyPolicy`   | `ConsistencyPolicy`            | `MINIMIZE_LATENCY` | No | SpiceDB read consistency: `MINIMIZE_LATENCY` (fastest, allows stale reads) or `FULLY_CONSISTENT` (linearizable). |
 | `cacheConfiguration`  | `CacheConfiguration`           | `null`       | No       | When set, results are cached in memory. `null` disables caching. See [Caching](#caching).                    |
 
 **Credential rotation** is supported by providing a `Supplier<String>` for the token. The
@@ -853,6 +859,7 @@ frontegg.entitlements.request-timeout=5s
 frontegg.entitlements.bulk-request-timeout=15s
 frontegg.entitlements.max-retries=3
 frontegg.entitlements.monitoring=false
+frontegg.entitlements.consistency-policy=minimize_latency
 
 # Optional — static fallback result when the engine is unreachable.
 # true = fail-open, false = fail-closed. Omit to propagate exceptions instead.
@@ -878,6 +885,7 @@ frontegg:
     bulk-request-timeout: 15s
     max-retries: 3
     monitoring: false
+    consistency-policy: minimize_latency
     fallback-result: false
     cache:
       max-size: 10000

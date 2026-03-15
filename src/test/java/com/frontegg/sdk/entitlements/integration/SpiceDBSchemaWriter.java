@@ -1,5 +1,6 @@
 package com.frontegg.sdk.entitlements.integration;
 
+import com.authzed.api.v1.ContextualizedCaveat;
 import com.authzed.api.v1.ObjectReference;
 import com.authzed.api.v1.PermissionsServiceGrpc;
 import com.authzed.api.v1.Relationship;
@@ -9,6 +10,8 @@ import com.authzed.api.v1.SubjectReference;
 import com.authzed.api.v1.WriteRelationshipsRequest;
 import com.authzed.api.v1.WriteSchemaRequest;
 import com.authzed.grpcutil.BearerToken;
+import com.google.protobuf.Struct;
+import com.google.protobuf.Value;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 
@@ -46,6 +49,10 @@ public class SpiceDBSchemaWriter {
      */
     public void writeSchema() {
         String schema = """
+                caveat active_at(at timestamp, activeFrom any, activeUntil any) {
+                    (activeFrom == null || at >= timestamp(activeFrom)) && (activeUntil == null || at <= timestamp(activeUntil))
+                }
+
                 definition frontegg_user {}
 
                 definition frontegg_tenant {}
@@ -65,8 +72,16 @@ public class SpiceDBSchemaWriter {
                 definition document {
                     relation viewer: frontegg_user
                     relation editor: frontegg_user
+                    relation parent: folder | folder with active_at
+                    relation reader: frontegg_user | frontegg_user with active_at
                     permission view = viewer + editor
                     permission edit = editor
+                    permission read_doc = parent->read_folder + reader
+                }
+
+                definition folder {
+                    relation reader: frontegg_user | frontegg_user with active_at
+                    permission read_folder = reader
                 }
                 """;
 
@@ -118,6 +133,52 @@ public class SpiceDBSchemaWriter {
         permissionsStub.writeRelationships(request);
     }
 
+    /**
+     * Writes caveat-based relationships for time-gated access tests.
+     *
+     * <p>Ported from the Node.js SDK demo. Sets up:
+     * <ul>
+     *   <li>Alice is a reader of the "salaries" folder (no caveat — always allowed)</li>
+     *   <li>Tim is a direct reader of salary docs (with active_at caveat per month)</li>
+     *   <li>Salary docs have "salaries" folder as parent (with active_at caveat per month)</li>
+     * </ul>
+     *
+     * <p>This enables testing:
+     * <ul>
+     *   <li>Time-based direct access (Tim can read doc at/after activeFrom)</li>
+     *   <li>Permission inheritance through folder (Alice can read docs via folder reader)</li>
+     *   <li>Time-filtered lookups (lookupResources/lookupSubjects with at parameter)</li>
+     * </ul>
+     */
+    public void writeCaveatRelationships() {
+        WriteRelationshipsRequest request = WriteRelationshipsRequest.newBuilder()
+                // Alice is always a reader of the salaries folder (no caveat)
+                .addUpdates(buildUpdate("folder", encode("salaries"), "reader",
+                        "frontegg_user", encode("Alice")))
+                // Tim is a direct reader of salary docs with time-based caveats
+                .addUpdates(buildCaveatUpdate("document", encode("Tim's_salary_Jan"), "reader",
+                        "frontegg_user", encode("Tim"),
+                        "active_at", "2026-01-01T00:00:00.000Z", null))
+                .addUpdates(buildCaveatUpdate("document", encode("Tim's_salary_Feb"), "reader",
+                        "frontegg_user", encode("Tim"),
+                        "active_at", "2026-02-01T00:00:00.000Z", null))
+                .addUpdates(buildCaveatUpdate("document", encode("Tim's_salary_Mar"), "reader",
+                        "frontegg_user", encode("Tim"),
+                        "active_at", "2026-03-01T00:00:00.000Z", null))
+                // Salary docs have "salaries" folder as parent (with time-based caveats)
+                .addUpdates(buildCaveatUpdate("document", encode("Tim's_salary_Jan"), "parent",
+                        "folder", encode("salaries"),
+                        "active_at", "2026-01-01T00:00:00.000Z", null))
+                .addUpdates(buildCaveatUpdate("document", encode("Tim's_salary_Feb"), "parent",
+                        "folder", encode("salaries"),
+                        "active_at", "2026-02-01T00:00:00.000Z", null))
+                .addUpdates(buildCaveatUpdate("document", encode("Tim's_salary_Mar"), "parent",
+                        "folder", encode("salaries"),
+                        "active_at", "2026-03-01T00:00:00.000Z", null))
+                .build();
+        permissionsStub.writeRelationships(request);
+    }
+
     private static RelationshipUpdate buildUpdate(String resourceType, String resourceId,
                                                    String relation,
                                                    String subjectType, String subjectId) {
@@ -134,6 +195,49 @@ public class SpiceDBSchemaWriter {
                                         .setObjectType(subjectType)
                                         .setObjectId(subjectId)
                                         .build())
+                                .build())
+                        .build())
+                .build();
+    }
+
+    private static RelationshipUpdate buildCaveatUpdate(String resourceType, String resourceId,
+                                                         String relation,
+                                                         String subjectType, String subjectId,
+                                                         String caveatName, String activeFrom,
+                                                         String activeUntil) {
+        Struct.Builder contextBuilder = Struct.newBuilder();
+        if (activeFrom != null) {
+            contextBuilder.putFields("activeFrom",
+                    Value.newBuilder().setStringValue(activeFrom).build());
+        } else {
+            contextBuilder.putFields("activeFrom",
+                    Value.newBuilder().setNullValueValue(0).build());
+        }
+        if (activeUntil != null) {
+            contextBuilder.putFields("activeUntil",
+                    Value.newBuilder().setStringValue(activeUntil).build());
+        } else {
+            contextBuilder.putFields("activeUntil",
+                    Value.newBuilder().setNullValueValue(0).build());
+        }
+
+        return RelationshipUpdate.newBuilder()
+                .setOperation(RelationshipUpdate.Operation.OPERATION_TOUCH)
+                .setRelationship(Relationship.newBuilder()
+                        .setResource(ObjectReference.newBuilder()
+                                .setObjectType(resourceType)
+                                .setObjectId(resourceId)
+                                .build())
+                        .setRelation(relation)
+                        .setSubject(SubjectReference.newBuilder()
+                                .setObject(ObjectReference.newBuilder()
+                                        .setObjectType(subjectType)
+                                        .setObjectId(subjectId)
+                                        .build())
+                                .build())
+                        .setOptionalCaveat(ContextualizedCaveat.newBuilder()
+                                .setCaveatName(caveatName)
+                                .setContext(contextBuilder.build())
                                 .build())
                         .build())
                 .build();

@@ -1,5 +1,6 @@
 package com.frontegg.sdk.entitlements.internal;
 
+import com.authzed.api.v1.Consistency;
 import com.authzed.api.v1.LookupResourcesResponse;
 import com.authzed.api.v1.LookupSubjectsResponse;
 import com.authzed.api.v1.ObjectReference;
@@ -7,12 +8,14 @@ import com.authzed.api.v1.SubjectReference;
 import com.frontegg.sdk.entitlements.model.LookupResourcesRequest;
 import com.frontegg.sdk.entitlements.model.LookupResult;
 import com.frontegg.sdk.entitlements.model.LookupSubjectsRequest;
+import com.google.protobuf.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Package-private query strategy that handles SpiceDB {@code LookupResources} and
@@ -32,11 +35,14 @@ class LookupSpiceDBQuery {
 
     private final LookupResourcesExecutor lookupResourcesExecutor;
     private final LookupSubjectsExecutor lookupSubjectsExecutor;
+    private final Supplier<Consistency> consistencySupplier;
 
     LookupSpiceDBQuery(LookupResourcesExecutor lookupResourcesExecutor,
-                       LookupSubjectsExecutor lookupSubjectsExecutor) {
+                       LookupSubjectsExecutor lookupSubjectsExecutor,
+                       Supplier<Consistency> consistencySupplier) {
         this.lookupResourcesExecutor = lookupResourcesExecutor;
         this.lookupSubjectsExecutor = lookupSubjectsExecutor;
+        this.consistencySupplier = consistencySupplier;
     }
 
     /**
@@ -52,8 +58,11 @@ class LookupSpiceDBQuery {
                 request.subjectType(), request.subjectId(), request.permission(),
                 request.resourceType());
 
-        com.authzed.api.v1.LookupResourcesRequest grpcRequest =
+        Struct caveatContext = CaveatContextBuilder.build(null, request.at());
+
+        com.authzed.api.v1.LookupResourcesRequest.Builder grpcRequestBuilder =
                 com.authzed.api.v1.LookupResourcesRequest.newBuilder()
+                        .setConsistency(consistencySupplier.get())
                         .setSubject(SubjectReference.newBuilder()
                                 .setObject(ObjectReference.newBuilder()
                                         .setObjectType(request.subjectType())
@@ -61,8 +70,13 @@ class LookupSpiceDBQuery {
                                         .build())
                                 .build())
                         .setResourceObjectType(request.resourceType())
-                        .setPermission(request.permission())
-                        .build();
+                        .setPermission(request.permission());
+
+        if (caveatContext != null) {
+            grpcRequestBuilder.setContext(caveatContext);
+        }
+
+        com.authzed.api.v1.LookupResourcesRequest grpcRequest = grpcRequestBuilder.build();
 
         Iterator<LookupResourcesResponse> responseIterator =
                 lookupResourcesExecutor.execute(grpcRequest);
@@ -92,15 +106,23 @@ class LookupSpiceDBQuery {
                 request.resourceType(), request.resourceId(), request.permission(),
                 request.subjectType());
 
-        com.authzed.api.v1.LookupSubjectsRequest grpcRequest =
+        Struct caveatContext = CaveatContextBuilder.build(null, request.at());
+
+        com.authzed.api.v1.LookupSubjectsRequest.Builder grpcRequestBuilder =
                 com.authzed.api.v1.LookupSubjectsRequest.newBuilder()
+                        .setConsistency(consistencySupplier.get())
                         .setResource(ObjectReference.newBuilder()
                                 .setObjectType(request.resourceType())
                                 .setObjectId(b64ResourceId)
                                 .build())
                         .setPermission(request.permission())
-                        .setSubjectObjectType(request.subjectType())
-                        .build();
+                        .setSubjectObjectType(request.subjectType());
+
+        if (caveatContext != null) {
+            grpcRequestBuilder.setContext(caveatContext);
+        }
+
+        com.authzed.api.v1.LookupSubjectsRequest grpcRequest = grpcRequestBuilder.build();
 
         Iterator<LookupSubjectsResponse> responseIterator =
                 lookupSubjectsExecutor.execute(grpcRequest);

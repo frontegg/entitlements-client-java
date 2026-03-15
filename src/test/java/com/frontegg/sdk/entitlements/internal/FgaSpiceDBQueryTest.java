@@ -26,6 +26,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class FgaSpiceDBQueryTest {
 
+    private static final java.util.function.Supplier<com.authzed.api.v1.Consistency> TEST_CONSISTENCY =
+            () -> com.authzed.api.v1.Consistency.newBuilder().setMinimizeLatency(true).build();
+
     // -------------------------------------------------------------------------
     // Permissionship outcome mapping
     // -------------------------------------------------------------------------
@@ -57,6 +60,19 @@ class FgaSpiceDBQueryTest {
     }
 
     @Test
+    void query_conditionalPermission_returnsDenied() {
+        FgaSpiceDBQuery query = queryWith(
+                CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION);
+
+        EntitlementsResult result = query.query(
+                new EntitySubjectContext("service_account", "svc-deployer-01"),
+                new EntityRequestContext("document", "doc-789", "viewer"));
+
+        assertFalse(result.result(), "PERMISSIONSHIP_CONDITIONAL_PERMISSION → result must be false (fail-closed)");
+        assertFalse(result.monitoring(), "monitoring must be false for normal check");
+    }
+
+    @Test
     void query_unspecifiedPermissionship_returnsDenied() {
         FgaSpiceDBQuery query = queryWith(
                 CheckPermissionResponse.Permissionship.PERMISSIONSHIP_UNSPECIFIED);
@@ -80,7 +96,7 @@ class FgaSpiceDBQueryTest {
             captured.set(req);
             return permissionResponse(
                     CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new EntitySubjectContext("service_account", "svc-deployer-01"),
@@ -105,7 +121,7 @@ class FgaSpiceDBQueryTest {
             captured.set(req);
             return permissionResponse(
                     CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new EntitySubjectContext("service_account", "svc-deployer-01"),
@@ -130,7 +146,7 @@ class FgaSpiceDBQueryTest {
             captured.set(req);
             return permissionResponse(
                     CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new EntitySubjectContext("service_account", "svc-deployer-01"),
@@ -155,7 +171,7 @@ class FgaSpiceDBQueryTest {
             captured.set(req);
             return permissionResponse(
                     CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
-        });
+        }, TEST_CONSISTENCY);
 
         // Use a value that would produce padding characters in standard Base64
         query.query(
@@ -188,7 +204,7 @@ class FgaSpiceDBQueryTest {
             captured.set(req);
             return permissionResponse(
                     CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new EntitySubjectContext("user", "user@example.com"),
@@ -206,6 +222,75 @@ class FgaSpiceDBQueryTest {
     }
 
     // -------------------------------------------------------------------------
+    // Caveat context — time-based access checks
+    // -------------------------------------------------------------------------
+
+    @Test
+    void query_withAtTimestamp_requestIncludesCaveatContext() {
+        AtomicReference<CheckPermissionRequest> captured = new AtomicReference<>();
+
+        FgaSpiceDBQuery query = new FgaSpiceDBQuery(req -> {
+            captured.set(req);
+            return permissionResponse(
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION);
+        }, TEST_CONSISTENCY);
+
+        java.time.Instant at = java.time.Instant.parse("2026-02-01T00:00:00Z");
+        query.query(
+                new EntitySubjectContext("user", "Tim"),
+                new EntityRequestContext("document", "doc-1", "read_doc", at));
+
+        CheckPermissionRequest request = captured.get();
+        assertNotNull(request);
+        assertTrue(request.hasContext(), "request must include caveat context when at is provided");
+        assertEquals(at.toString(),
+                request.getContext().getFieldsOrThrow("at").getStringValue(),
+                "caveat context 'at' field must contain ISO-8601 timestamp");
+    }
+
+    @Test
+    void query_withNullAt_requestHasNoCaveatContext() {
+        AtomicReference<CheckPermissionRequest> captured = new AtomicReference<>();
+
+        FgaSpiceDBQuery query = new FgaSpiceDBQuery(req -> {
+            captured.set(req);
+            return permissionResponse(
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
+        }, TEST_CONSISTENCY);
+
+        query.query(
+                new EntitySubjectContext("user", "Alice"),
+                new EntityRequestContext("document", "doc-1", "read_doc"));
+
+        CheckPermissionRequest request = captured.get();
+        assertNotNull(request);
+        assertFalse(request.hasContext(),
+                "request must not include caveat context when at is null");
+    }
+
+    @Test
+    void query_withAtTimestamp_caveatContextUsesIso8601Format() {
+        AtomicReference<CheckPermissionRequest> captured = new AtomicReference<>();
+
+        FgaSpiceDBQuery query = new FgaSpiceDBQuery(req -> {
+            captured.set(req);
+            return permissionResponse(
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION);
+        }, TEST_CONSISTENCY);
+
+        java.time.Instant at = java.time.Instant.parse("2026-03-15T14:30:00Z");
+        query.query(
+                new EntitySubjectContext("service_account", "svc-01"),
+                new EntityRequestContext("project", "proj-1", "editor", at));
+
+        CheckPermissionRequest request = captured.get();
+        String atValue = request.getContext().getFieldsOrThrow("at").getStringValue();
+        // Instant.toString() produces ISO-8601: "2026-03-15T14:30:00Z"
+        assertEquals("2026-03-15T14:30:00Z", atValue,
+                "caveat context at value must be ISO-8601 format");
+    }
+
+    // -------------------------------------------------------------------------
     // Helper factory methods
     // -------------------------------------------------------------------------
 
@@ -216,7 +301,7 @@ class FgaSpiceDBQueryTest {
     private static FgaSpiceDBQuery queryWith(
             CheckPermissionResponse.Permissionship permissionship) {
         CheckPermissionResponse response = permissionResponse(permissionship);
-        return new FgaSpiceDBQuery(req -> response);
+        return new FgaSpiceDBQuery(req -> response, TEST_CONSISTENCY);
     }
 
     private static CheckPermissionResponse permissionResponse(

@@ -22,6 +22,42 @@ jobs:
         run: mvn verify --batch-mode
       - name: Run integration tests
         run: mvn verify -P integration --batch-mode
+  e2e:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: ['17']
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: temurin
+          cache: maven
+      - name: Start SpiceDB
+        run: docker compose -f e2e/docker-compose.yml up -d
+      - name: Wait for SpiceDB readiness
+        run: |
+          for i in $(seq 1 60); do
+            if docker compose -f e2e/docker-compose.yml exec -T spicedb grpc_health_probe -addr=:50051 > /dev/null 2>&1; then
+              echo "SpiceDB is ready"
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "SpiceDB did not become ready"
+              docker compose -f e2e/docker-compose.yml logs spicedb
+              exit 1
+            fi
+            sleep 2
+          done
+      - name: Build SDK
+        run: mvn compile test-compile --batch-mode
+      - name: Run E2E tests
+        run: mvn verify -P e2e --batch-mode -Dspicedb.endpoint=localhost:50051 -Dspicedb.token=spicedb
+      - name: Teardown
+        if: always()
+        run: docker compose -f e2e/docker-compose.yml down -v
       - name: Install core SDK to local repo
         run: mvn install --batch-mode -DskipTests
       - name: Compile Spring Boot Starter

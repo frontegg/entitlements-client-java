@@ -40,6 +40,9 @@ public final class ClientConfiguration {
     /** Default maximum number of retry attempts for transient failures. */
     public static final int DEFAULT_MAX_RETRIES = 3;
 
+    /** Default consistency policy for SpiceDB reads. */
+    public static final ConsistencyPolicy DEFAULT_CONSISTENCY_POLICY = ConsistencyPolicy.MINIMIZE_LATENCY;
+
     private final String engineEndpoint;
     private final Supplier<String> engineToken;
     private final FallbackStrategy fallbackStrategy;
@@ -49,6 +52,7 @@ public final class ClientConfiguration {
     private final boolean useTls;
     private final boolean monitoring;
     private final CacheConfiguration cacheConfiguration;
+    private final ConsistencyPolicy consistencyPolicy;
 
     private ClientConfiguration(Builder builder) {
         this.engineEndpoint = builder.engineEndpoint;
@@ -60,6 +64,7 @@ public final class ClientConfiguration {
         this.useTls = builder.useTls;
         this.monitoring = builder.monitoring;
         this.cacheConfiguration = builder.cacheConfiguration;
+        this.consistencyPolicy = builder.consistencyPolicy;
     }
 
     /**
@@ -176,6 +181,16 @@ public final class ClientConfiguration {
     }
 
     /**
+     * Returns the consistency policy for SpiceDB reads.
+     *
+     * @return the consistency policy; never {@code null}
+     * @since 0.2.0
+     */
+    public ConsistencyPolicy getConsistencyPolicy() {
+        return consistencyPolicy;
+    }
+
+    /**
      * Returns a string representation of this configuration with the engine token redacted to
      * prevent accidental secret exposure in logs or stack traces.
      *
@@ -194,6 +209,7 @@ public final class ClientConfiguration {
                 + ", useTls=" + useTls
                 + ", monitoring=" + monitoring
                 + ", cacheConfiguration=" + cacheConfiguration
+                + ", consistencyPolicy=" + consistencyPolicy
                 + '}';
     }
 
@@ -220,6 +236,7 @@ public final class ClientConfiguration {
         private boolean useTls = true;
         private boolean monitoring = false;
         private CacheConfiguration cacheConfiguration; // null = caching disabled
+        private ConsistencyPolicy consistencyPolicy = DEFAULT_CONSISTENCY_POLICY;
 
         private Builder() {
         }
@@ -376,6 +393,23 @@ public final class ClientConfiguration {
          */
         public Builder cacheConfiguration(CacheConfiguration cacheConfiguration) {
             this.cacheConfiguration = cacheConfiguration;
+            return this;
+        }
+
+        /**
+         * Sets the consistency policy for SpiceDB reads.
+         *
+         * <p>Default is {@link ConsistencyPolicy#MINIMIZE_LATENCY} (SpiceDB's default, best
+         * performance). Use {@link ConsistencyPolicy#FULLY_CONSISTENT} when you need
+         * read-after-write consistency.
+         *
+         * @param consistencyPolicy the consistency policy; must not be {@code null}
+         * @return this builder
+         * @since 0.2.0
+         */
+        public Builder consistencyPolicy(ConsistencyPolicy consistencyPolicy) {
+            this.consistencyPolicy = Objects.requireNonNull(consistencyPolicy,
+                    "consistencyPolicy must not be null");
             return this;
         }
 

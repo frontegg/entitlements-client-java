@@ -51,7 +51,8 @@ entitlements-client-java/
     │   │   └── LookupResult.java                    # Record
     │   ├── config/
     │   │   ├── ClientConfiguration.java             # Builder pattern
-    │   │   └── CacheConfiguration.java              # Record
+    │   │   ├── CacheConfiguration.java              # Record
+    │   │   └── ConsistencyPolicy.java               # Enum (MINIMIZE_LATENCY, FULLY_CONSISTENT)
     │   ├── fallback/
     │   │   ├── FallbackStrategy.java                # Sealed interface
     │   │   ├── StaticFallback.java                  # Record
@@ -75,6 +76,7 @@ entitlements-client-java/
     │       ├── BearerTokenCallCredentials.java       # gRPC call credentials
     │       ├── CaveatContextBuilder.java             # Builds protobuf Struct
     │       ├── EntitlementsCacheKey.java             # Cache key record
+    │       ├── ConsistencyFactory.java               # Converts ConsistencyPolicy → Supplier<Consistency>
     │       ├── BulkPermissionsExecutor.java          # Executes CheckBulkPermissions RPCs
     │       ├── CheckPermissionExecutor.java          # Executes CheckPermission RPCs
     │       ├── LookupResourcesExecutor.java          # Executes LookupResources RPCs
@@ -86,6 +88,10 @@ entitlements-client-java/
     │       └── LookupSpiceDBQuery.java               # LookupResources / LookupSubjects dispatch
     └── test/java/com/frontegg/sdk/entitlements/
         ├── EntitlementsClientFactoryTest.java
+        ├── e2e/
+        │   └── SpiceDBE2ETest.java                  # Full E2E tests (mvn verify -Pe2e)
+        ├── integration/
+        │   └── SpiceDBIntegrationTest.java          # Integration tests (mvn verify -Pintegration)
         ├── cache/
         │   └── CaffeineCacheProviderTest.java
         ├── config/

@@ -1,0 +1,45 @@
+schema: |
+
+    caveat active_at(at timestamp, activeFrom any, activeUntil any) {
+      (activeFrom == null || at >= timestamp(activeFrom)) && (activeUntil == null || at <= timestamp(activeUntil))
+    }
+
+    definition frontegg_user {}
+
+    definition frontegg_tenant {}
+
+    definition frontegg_feature {
+        relation entitled: frontegg_user | frontegg_tenant
+    }
+
+    definition frontegg_permission {
+        relation entitled: frontegg_user | frontegg_tenant
+    }
+
+    definition frontegg_route {
+        relation entitled: frontegg_user | frontegg_tenant
+    }
+
+    definition document {
+        relation viewer: frontegg_user
+        relation editor: frontegg_user
+        relation parent: folder | folder with active_at
+        relation reader: frontegg_user | frontegg_user with active_at
+        permission view = viewer + editor
+        permission edit = editor
+        permission read_doc = parent->read_folder + reader
+    }
+
+    definition folder {
+        relation reader: frontegg_user | frontegg_user with active_at
+        permission read_folder = reader
+    }
+
+relationships: |
+    folder:c2FsYXJpZXM#reader@frontegg_user:QWxpY2U
+    document:VGltJ3Nfc2FsYXJ5X0phbg#reader@frontegg_user:VGlt[active_at:{"activeFrom":"2026-01-01T00:00:00.000Z","activeUntil":null}]
+    document:VGltJ3Nfc2FsYXJ5X0ZlYg#reader@frontegg_user:VGlt[active_at:{"activeFrom":"2026-02-01T00:00:00.000Z","activeUntil":null}]
+    document:VGltJ3Nfc2FsYXJ5X01hcg#reader@frontegg_user:VGlt[active_at:{"activeFrom":"2026-03-01T00:00:00.000Z","activeUntil":null}]
+    document:VGltJ3Nfc2FsYXJ5X0phbg#parent@folder:c2FsYXJpZXM[active_at:{"activeFrom":"2026-01-01T00:00:00.000Z","activeUntil":null}]
+    document:VGltJ3Nfc2FsYXJ5X0ZlYg#parent@folder:c2FsYXJpZXM[active_at:{"activeFrom":"2026-02-01T00:00:00.000Z","activeUntil":null}]
+    document:VGltJ3Nfc2FsYXJ5X01hcg#parent@folder:c2FsYXJpZXM[active_at:{"activeFrom":"2026-03-01T00:00:00.000Z","activeUntil":null}]

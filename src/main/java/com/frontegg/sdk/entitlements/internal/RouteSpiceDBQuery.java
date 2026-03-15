@@ -1,6 +1,7 @@
 package com.frontegg.sdk.entitlements.internal;
 
 import com.authzed.api.v1.CheckBulkPermissionsPair;
+import com.authzed.api.v1.Consistency;
 import com.authzed.api.v1.CheckBulkPermissionsRequest;
 import com.authzed.api.v1.CheckBulkPermissionsRequestItem;
 import com.authzed.api.v1.CheckBulkPermissionsResponse;
@@ -14,6 +15,8 @@ import com.frontegg.sdk.entitlements.model.UserSubjectContext;
 import com.google.protobuf.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.function.Supplier;
 
 /**
  * Package-private query strategy that handles {@link RouteRequestContext} checks.
@@ -45,9 +48,11 @@ class RouteSpiceDBQuery {
     private static final String TYPE_ROUTE = "frontegg_route";
 
     private final BulkPermissionsExecutor executor;
+    private final Supplier<Consistency> consistencySupplier;
 
-    RouteSpiceDBQuery(BulkPermissionsExecutor executor) {
+    RouteSpiceDBQuery(BulkPermissionsExecutor executor, Supplier<Consistency> consistencySupplier) {
         this.executor = executor;
+        this.consistencySupplier = consistencySupplier;
     }
 
     /**
@@ -81,6 +86,7 @@ class RouteSpiceDBQuery {
                 TYPE_TENANT, b64TenantId, routeResource, caveatContext);
 
         CheckBulkPermissionsRequest request = CheckBulkPermissionsRequest.newBuilder()
+                .setConsistency(consistencySupplier.get())
                 .addItems(userItem)
                 .addItems(tenantItem)
                 .build();
@@ -93,6 +99,17 @@ class RouteSpiceDBQuery {
                 throw new EntitlementsQueryException(
                         "SpiceDB returned an error for route permission check: " + pair.getError().getMessage());
             }
+        }
+
+        boolean hasConditional = response.getPairsList().stream()
+                .filter(CheckBulkPermissionsPair::hasItem)
+                .map(pair -> pair.getItem().getPermissionship())
+                .anyMatch(p -> p == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION);
+        if (hasConditional) {
+            log.warn("SpiceDB returned CONDITIONAL_PERMISSION for route check "
+                    + "userId={} method={} path={} — treating as denied (fail-closed). "
+                    + "Ensure caveat context is fully populated.",
+                    userCtx.userId(), routeCtx.method(), routeCtx.path());
         }
 
         boolean entitled = response.getPairsList().stream()

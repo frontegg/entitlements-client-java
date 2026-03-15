@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -29,6 +30,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * (see {@code FgaSpiceDBQueryTest}).
  */
 class LookupSpiceDBQueryTest {
+
+    private static final java.util.function.Supplier<com.authzed.api.v1.Consistency> TEST_CONSISTENCY =
+            () -> com.authzed.api.v1.Consistency.newBuilder().setMinimizeLatency(true).build();
 
     // -------------------------------------------------------------------------
     // lookupResources — result decoding
@@ -43,7 +47,7 @@ class LookupSpiceDBQueryTest {
                 req -> iteratorOf(
                         resourcesResponse(base64(rawId1)),
                         resourcesResponse(base64(rawId2))),
-                req -> Collections.emptyIterator());
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
 
         LookupResult result = query.lookupResources(
                 new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
@@ -59,7 +63,7 @@ class LookupSpiceDBQueryTest {
     void lookupResources_emptyResult_returnsEmptyList() {
         LookupSpiceDBQuery query = new LookupSpiceDBQuery(
                 req -> Collections.emptyIterator(),
-                req -> Collections.emptyIterator());
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
 
         LookupResult result = query.lookupResources(
                 new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
@@ -75,7 +79,7 @@ class LookupSpiceDBQueryTest {
 
         LookupSpiceDBQuery query = new LookupSpiceDBQuery(
                 req -> iteratorOf(resourcesResponse(base64(rawId))),
-                req -> Collections.emptyIterator());
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
 
         LookupResult result = query.lookupResources(
                 new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
@@ -97,7 +101,7 @@ class LookupSpiceDBQueryTest {
                     captured.set(req);
                     return Collections.emptyIterator();
                 },
-                req -> Collections.emptyIterator());
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
 
         query.lookupResources(
                 new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
@@ -129,7 +133,7 @@ class LookupSpiceDBQueryTest {
                     captured.set(req);
                     return Collections.emptyIterator();
                 },
-                req -> Collections.emptyIterator());
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
 
         // Use an ID that would produce standard Base64 padding
         query.lookupResources(
@@ -154,7 +158,7 @@ class LookupSpiceDBQueryTest {
                 req -> Collections.emptyIterator(),
                 req -> iteratorOf(
                         subjectsResponse(base64(rawId1)),
-                        subjectsResponse(base64(rawId2))));
+                        subjectsResponse(base64(rawId2))), TEST_CONSISTENCY);
 
         LookupResult result = query.lookupSubjects(
                 new com.frontegg.sdk.entitlements.model.LookupSubjectsRequest(
@@ -170,7 +174,7 @@ class LookupSpiceDBQueryTest {
     void lookupSubjects_emptyResult_returnsEmptyList() {
         LookupSpiceDBQuery query = new LookupSpiceDBQuery(
                 req -> Collections.emptyIterator(),
-                req -> Collections.emptyIterator());
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
 
         LookupResult result = query.lookupSubjects(
                 new com.frontegg.sdk.entitlements.model.LookupSubjectsRequest(
@@ -186,7 +190,7 @@ class LookupSpiceDBQueryTest {
 
         LookupSpiceDBQuery query = new LookupSpiceDBQuery(
                 req -> Collections.emptyIterator(),
-                req -> iteratorOf(subjectsResponse(base64(rawId))));
+                req -> iteratorOf(subjectsResponse(base64(rawId))), TEST_CONSISTENCY);
 
         LookupResult result = query.lookupSubjects(
                 new com.frontegg.sdk.entitlements.model.LookupSubjectsRequest(
@@ -208,7 +212,7 @@ class LookupSpiceDBQueryTest {
                 req -> {
                     captured.set(req);
                     return Collections.emptyIterator();
-                });
+                }, TEST_CONSISTENCY);
 
         query.lookupSubjects(
                 new com.frontegg.sdk.entitlements.model.LookupSubjectsRequest(
@@ -232,6 +236,106 @@ class LookupSpiceDBQueryTest {
     }
 
     // -------------------------------------------------------------------------
+    // lookupResources — caveat context (time-based access)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void lookupResources_withAtTimestamp_requestIncludesCaveatContext() {
+        AtomicReference<LookupResourcesRequest> captured = new AtomicReference<>();
+
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> {
+                    captured.set(req);
+                    return Collections.emptyIterator();
+                },
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
+
+        java.time.Instant at = java.time.Instant.parse("2026-03-01T00:00:00Z");
+        query.lookupResources(
+                new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
+                        "user", "Tim", "read_doc", "document", at));
+
+        LookupResourcesRequest grpcRequest = captured.get();
+        assertNotNull(grpcRequest);
+        assertTrue(grpcRequest.hasContext(),
+                "gRPC request must include caveat context when at is provided");
+        assertEquals(at.toString(),
+                grpcRequest.getContext().getFieldsOrThrow("at").getStringValue(),
+                "caveat context 'at' field must contain ISO-8601 timestamp");
+    }
+
+    @Test
+    void lookupResources_withNullAt_requestHasNoCaveatContext() {
+        AtomicReference<LookupResourcesRequest> captured = new AtomicReference<>();
+
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> {
+                    captured.set(req);
+                    return Collections.emptyIterator();
+                },
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
+
+        query.lookupResources(
+                new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
+                        "user", "Tim", "read_doc", "document"));
+
+        LookupResourcesRequest grpcRequest = captured.get();
+        assertNotNull(grpcRequest);
+        assertFalse(grpcRequest.hasContext(),
+                "gRPC request must not include caveat context when at is null");
+    }
+
+    // -------------------------------------------------------------------------
+    // lookupSubjects — caveat context (time-based access)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void lookupSubjects_withAtTimestamp_requestIncludesCaveatContext() {
+        AtomicReference<com.authzed.api.v1.LookupSubjectsRequest> captured = new AtomicReference<>();
+
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> Collections.emptyIterator(),
+                req -> {
+                    captured.set(req);
+                    return Collections.emptyIterator();
+                }, TEST_CONSISTENCY);
+
+        java.time.Instant at = java.time.Instant.parse("2026-02-01T00:00:00Z");
+        query.lookupSubjects(
+                new com.frontegg.sdk.entitlements.model.LookupSubjectsRequest(
+                        "document", "doc-1", "read_doc", "user", at));
+
+        com.authzed.api.v1.LookupSubjectsRequest grpcRequest = captured.get();
+        assertNotNull(grpcRequest);
+        assertTrue(grpcRequest.hasContext(),
+                "gRPC request must include caveat context when at is provided");
+        assertEquals(at.toString(),
+                grpcRequest.getContext().getFieldsOrThrow("at").getStringValue(),
+                "caveat context 'at' field must contain ISO-8601 timestamp");
+    }
+
+    @Test
+    void lookupSubjects_withNullAt_requestHasNoCaveatContext() {
+        AtomicReference<com.authzed.api.v1.LookupSubjectsRequest> captured = new AtomicReference<>();
+
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> Collections.emptyIterator(),
+                req -> {
+                    captured.set(req);
+                    return Collections.emptyIterator();
+                }, TEST_CONSISTENCY);
+
+        query.lookupSubjects(
+                new com.frontegg.sdk.entitlements.model.LookupSubjectsRequest(
+                        "document", "doc-1", "read_doc", "user"));
+
+        com.authzed.api.v1.LookupSubjectsRequest grpcRequest = captured.get();
+        assertNotNull(grpcRequest);
+        assertFalse(grpcRequest.hasContext(),
+                "gRPC request must not include caveat context when at is null");
+    }
+
+    // -------------------------------------------------------------------------
     // Base64 roundtrip — encode then decode produces original value
     // -------------------------------------------------------------------------
 
@@ -241,7 +345,7 @@ class LookupSpiceDBQueryTest {
 
         LookupSpiceDBQuery query = new LookupSpiceDBQuery(
                 req -> iteratorOf(resourcesResponse(base64(rawId))),
-                req -> Collections.emptyIterator());
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
 
         LookupResult result = query.lookupResources(
                 new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
@@ -257,7 +361,7 @@ class LookupSpiceDBQueryTest {
 
         LookupSpiceDBQuery query = new LookupSpiceDBQuery(
                 req -> Collections.emptyIterator(),
-                req -> iteratorOf(subjectsResponse(base64(rawId))));
+                req -> iteratorOf(subjectsResponse(base64(rawId))), TEST_CONSISTENCY);
 
         LookupResult result = query.lookupSubjects(
                 new com.frontegg.sdk.entitlements.model.LookupSubjectsRequest(
@@ -278,7 +382,7 @@ class LookupSpiceDBQueryTest {
         };
         LookupSpiceDBQuery query = new LookupSpiceDBQuery(
                 failingExecutor,
-                req -> Collections.emptyIterator());
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
 
         assertThrows(StatusRuntimeException.class, () -> query.lookupResources(
                 new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
@@ -292,7 +396,7 @@ class LookupSpiceDBQueryTest {
         };
         LookupSpiceDBQuery query = new LookupSpiceDBQuery(
                 req -> Collections.emptyIterator(),
-                failingExecutor);
+                failingExecutor, TEST_CONSISTENCY);
 
         assertThrows(StatusRuntimeException.class, () -> query.lookupSubjects(
                 new com.frontegg.sdk.entitlements.model.LookupSubjectsRequest(
@@ -307,7 +411,7 @@ class LookupSpiceDBQueryTest {
     void lookupResources_nullRequest_throwsNullPointerException() {
         LookupSpiceDBQuery query = new LookupSpiceDBQuery(
                 req -> Collections.emptyIterator(),
-                req -> Collections.emptyIterator());
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
 
         assertThrows(NullPointerException.class, () -> query.lookupResources(null));
     }
@@ -316,7 +420,7 @@ class LookupSpiceDBQueryTest {
     void lookupSubjects_nullRequest_throwsNullPointerException() {
         LookupSpiceDBQuery query = new LookupSpiceDBQuery(
                 req -> Collections.emptyIterator(),
-                req -> Collections.emptyIterator());
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
 
         assertThrows(NullPointerException.class, () -> query.lookupSubjects(null));
     }

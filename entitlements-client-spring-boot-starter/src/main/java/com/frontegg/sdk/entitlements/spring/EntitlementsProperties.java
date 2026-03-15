@@ -19,6 +19,7 @@ import java.time.Duration;
  * frontegg.entitlements.fallback-result=false
  * frontegg.entitlements.cache.max-size=10000
  * frontegg.entitlements.cache.expire-after-write=60s
+ * frontegg.entitlements.consistency-policy=minimize_latency
  * </pre>
  *
  * @since 0.2.0
@@ -36,6 +37,7 @@ public class EntitlementsProperties {
     private Boolean fallbackResult;  // null = no fallback, true/false = static fallback
     private boolean enabled = true;
     private CacheProperties cache;
+    private String consistencyPolicy = "minimize_latency";
 
     public String getEngineEndpoint() { return engineEndpoint; }
     public void setEngineEndpoint(String engineEndpoint) { this.engineEndpoint = engineEndpoint; }
@@ -66,6 +68,9 @@ public class EntitlementsProperties {
 
     public CacheProperties getCache() { return cache; }
     public void setCache(CacheProperties cache) { this.cache = cache; }
+
+    public String getConsistencyPolicy() { return consistencyPolicy; }
+    public void setConsistencyPolicy(String consistencyPolicy) { this.consistencyPolicy = consistencyPolicy; }
 
     /**
      * Nested cache configuration properties.

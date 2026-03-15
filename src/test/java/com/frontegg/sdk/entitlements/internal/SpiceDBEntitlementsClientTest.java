@@ -124,13 +124,15 @@ class SpiceDBEntitlementsClientTest {
 
         /** Creates a query client that returns the given result on execute(). */
         ControlledQueryClient(EntitlementsResult result) {
-            super(/* featureQuery */ null, /* permissionQuery */ null);
+            super(/* featureQuery */ null, /* permissionQuery */ null,
+                    /* fgaQuery */ null, /* routeQuery */ null);
             this.resultToReturn = result;
         }
 
         /** Creates a query client that throws the given exception on execute(). */
         ControlledQueryClient(StatusRuntimeException error) {
-            super(/* featureQuery */ null, /* permissionQuery */ null);
+            super(/* featureQuery */ null, /* permissionQuery */ null,
+                    /* fgaQuery */ null, /* routeQuery */ null);
             this.errorToThrow = error;
         }
 
@@ -158,7 +160,8 @@ class SpiceDBEntitlementsClientTest {
 
         FailThenSucceedQueryClient(int failTimes, StatusRuntimeException error,
                                    EntitlementsResult successResult) {
-            super(/* featureQuery */ null, /* permissionQuery */ null);
+            super(/* featureQuery */ null, /* permissionQuery */ null,
+                    /* fgaQuery */ null, /* routeQuery */ null);
             this.failTimes = failTimes;
             this.errorToThrow = error;
             this.successResult = successResult;

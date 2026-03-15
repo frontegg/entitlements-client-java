@@ -6,6 +6,7 @@ import com.authzed.api.v1.CheckBulkPermissionsRequestItem;
 import com.authzed.api.v1.CheckBulkPermissionsResponse;
 import com.authzed.api.v1.CheckBulkPermissionsResponseItem;
 import com.authzed.api.v1.CheckPermissionResponse;
+import com.authzed.api.v1.Consistency;
 import com.authzed.api.v1.ObjectReference;
 import com.authzed.api.v1.SubjectReference;
 import com.frontegg.sdk.entitlements.model.EntitlementsResult;
@@ -19,6 +20,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -35,6 +37,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PermissionSpiceDBQueryTest {
 
+    private static final Supplier<Consistency> TEST_CONSISTENCY =
+            () -> Consistency.newBuilder().setMinimizeLatency(true).build();
+
     // -------------------------------------------------------------------------
     // Single permission — permissionship outcome mapping
     // -------------------------------------------------------------------------
@@ -43,7 +48,7 @@ class PermissionSpiceDBQueryTest {
     void query_singlePermission_userEntitled_returnsAllowed() {
         PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req ->
                 responseForRequest(req, CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
-                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION));
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION), TEST_CONSISTENCY);
 
         EntitlementsResult result = query.query(
                 new UserSubjectContext("user-1", "tenant-1"),
@@ -57,7 +62,7 @@ class PermissionSpiceDBQueryTest {
     void query_singlePermission_tenantEntitledUserDenied_returnsAllowed() {
         PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req ->
                 responseForRequest(req, CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION,
-                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION));
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION), TEST_CONSISTENCY);
 
         EntitlementsResult result = query.query(
                 new UserSubjectContext("user-1", "tenant-1"),
@@ -67,10 +72,36 @@ class PermissionSpiceDBQueryTest {
     }
 
     @Test
+    void query_singlePermission_userConditionalPermission_returnsDenied() {
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req ->
+                responseForRequest(req, CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION,
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION), TEST_CONSISTENCY);
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new PermissionRequestContext("reports:read"));
+
+        assertFalse(result.result(), "conditional permission → result must be false (fail-closed)");
+    }
+
+    @Test
+    void query_singlePermission_tenantConditionalPermission_returnsDenied() {
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req ->
+                responseForRequest(req, CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION,
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION), TEST_CONSISTENCY);
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new PermissionRequestContext("reports:read"));
+
+        assertFalse(result.result(), "conditional permission → result must be false (fail-closed)");
+    }
+
+    @Test
     void query_singlePermission_bothDenied_returnsDenied() {
         PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req ->
                 responseForRequest(req, CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION,
-                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION));
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION), TEST_CONSISTENCY);
 
         EntitlementsResult result = query.query(
                 new UserSubjectContext("user-1", "tenant-1"),
@@ -88,7 +119,7 @@ class PermissionSpiceDBQueryTest {
         // Both permissions: user is entitled (tenant denied)
         PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req ->
                 responseForRequest(req, CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
-                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION));
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION), TEST_CONSISTENCY);
 
         EntitlementsResult result = query.query(
                 new UserSubjectContext("user-1", "tenant-1"),
@@ -114,7 +145,7 @@ class PermissionSpiceDBQueryTest {
                 responseBuilder.addPairs(pairWithRequest(items.get(i), p));
             }
             return responseBuilder.build();
-        });
+        }, TEST_CONSISTENCY);
 
         EntitlementsResult result = denyFirstQuery.query(
                 new UserSubjectContext("user-1", "tenant-1"),
@@ -134,7 +165,7 @@ class PermissionSpiceDBQueryTest {
         PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
             captured.set(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new UserSubjectContext("user-abc", "tenant-xyz"),
@@ -153,7 +184,7 @@ class PermissionSpiceDBQueryTest {
         PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
             captured.set(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new UserSubjectContext("user-abc", "tenant-xyz"),
@@ -190,7 +221,7 @@ class PermissionSpiceDBQueryTest {
         PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
             requests.add(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new UserSubjectContext("user-1", "tenant-1",
@@ -214,7 +245,7 @@ class PermissionSpiceDBQueryTest {
         PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
             requests.add(req);
             return emptyResponse();
-        });
+        }, TEST_CONSISTENCY);
 
         query.query(
                 new UserSubjectContext("user-1", "tenant-1", Map.of()),

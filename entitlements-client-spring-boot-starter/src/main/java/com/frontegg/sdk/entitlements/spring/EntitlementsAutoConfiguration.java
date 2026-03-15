@@ -4,6 +4,7 @@ import com.frontegg.sdk.entitlements.EntitlementsClient;
 import com.frontegg.sdk.entitlements.EntitlementsClientFactory;
 import com.frontegg.sdk.entitlements.config.CacheConfiguration;
 import com.frontegg.sdk.entitlements.config.ClientConfiguration;
+import com.frontegg.sdk.entitlements.config.ConsistencyPolicy;
 import com.frontegg.sdk.entitlements.fallback.StaticFallback;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -48,7 +49,9 @@ public class EntitlementsAutoConfiguration {
                 .requestTimeout(properties.getRequestTimeout())
                 .bulkRequestTimeout(properties.getBulkRequestTimeout())
                 .maxRetries(properties.getMaxRetries())
-                .monitoring(properties.isMonitoring());
+                .monitoring(properties.isMonitoring())
+                .consistencyPolicy(ConsistencyPolicy.valueOf(
+                        properties.getConsistencyPolicy().toUpperCase()));
 
         if (properties.getFallbackResult() != null) {
             builder.fallbackStrategy(new StaticFallback(properties.getFallbackResult()));
