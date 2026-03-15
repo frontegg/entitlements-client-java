@@ -57,6 +57,19 @@ class FgaSpiceDBQueryTest {
     }
 
     @Test
+    void query_conditionalPermission_returnsAllowed() {
+        FgaSpiceDBQuery query = queryWith(
+                CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION);
+
+        EntitlementsResult result = query.query(
+                new EntitySubjectContext("service_account", "svc-deployer-01"),
+                new EntityRequestContext("document", "doc-789", "viewer"));
+
+        assertTrue(result.result(), "PERMISSIONSHIP_CONDITIONAL_PERMISSION → result must be true");
+        assertFalse(result.monitoring(), "monitoring must be false for normal check");
+    }
+
+    @Test
     void query_unspecifiedPermissionship_returnsDenied() {
         FgaSpiceDBQuery query = queryWith(
                 CheckPermissionResponse.Permissionship.PERMISSIONSHIP_UNSPECIFIED);

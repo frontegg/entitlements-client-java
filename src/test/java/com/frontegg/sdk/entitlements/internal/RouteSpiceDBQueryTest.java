@@ -70,6 +70,32 @@ class RouteSpiceDBQueryTest {
     }
 
     @Test
+    void query_userConditionalPermission_returnsAllowed() {
+        RouteSpiceDBQuery query = queryWith(
+                permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION),
+                permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION));
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new RouteRequestContext("GET", "/api/v1/reports"));
+
+        assertTrue(result.result(), "user conditional permission → result must be true");
+    }
+
+    @Test
+    void query_tenantConditionalPermission_returnsAllowed() {
+        RouteSpiceDBQuery query = queryWith(
+                permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION),
+                permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION));
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new RouteRequestContext("POST", "/api/v1/data"));
+
+        assertTrue(result.result(), "tenant conditional permission → result must be true");
+    }
+
+    @Test
     void query_bothDenied_returnsDenied() {
         RouteSpiceDBQuery query = queryWith(
                 permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION),

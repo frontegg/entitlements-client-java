@@ -28,7 +28,7 @@ jobs:
       matrix:
         java: ['17']
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Set up JDK ${{ matrix.java }}
         uses: actions/setup-java@v5
         with:
@@ -40,7 +40,7 @@ jobs:
       - name: Wait for SpiceDB readiness
         run: |
           for i in $(seq 1 30); do
-            if docker compose -f e2e/docker-compose.yml exec -T spicedb pgrep -f spicedb > /dev/null 2>&1; then
+            if docker compose -f e2e/docker-compose.yml exec -T spicedb grpc_health_probe -addr=:50051 > /dev/null 2>&1; then
               echo "SpiceDB is ready"
               break
             fi

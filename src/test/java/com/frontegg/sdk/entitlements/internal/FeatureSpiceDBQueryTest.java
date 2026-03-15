@@ -65,6 +65,32 @@ class FeatureSpiceDBQueryTest {
     }
 
     @Test
+    void query_userConditionalPermission_returnsAllowed() {
+        FeatureSpiceDBQuery query = queryWith(
+                permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION),
+                permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION));
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new FeatureRequestContext("feature-key"));
+
+        assertTrue(result.result(), "user conditional permission → result must be true");
+    }
+
+    @Test
+    void query_tenantConditionalPermission_returnsAllowed() {
+        FeatureSpiceDBQuery query = queryWith(
+                permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION),
+                permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION));
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new FeatureRequestContext("feature-key"));
+
+        assertTrue(result.result(), "tenant conditional permission → result must be true");
+    }
+
+    @Test
     void query_bothDenied_returnsDenied() {
         FeatureSpiceDBQuery query = queryWith(
                 permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION),

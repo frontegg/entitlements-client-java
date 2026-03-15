@@ -16,7 +16,7 @@ docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d --wait
 
 echo "Waiting for SpiceDB to be ready..."
 for i in $(seq 1 30); do
-    if docker compose -f "$SCRIPT_DIR/docker-compose.yml" exec -T spicedb pgrep -f spicedb > /dev/null 2>&1; then
+    if docker compose -f "$SCRIPT_DIR/docker-compose.yml" exec -T spicedb grpc_health_probe -addr=:50051 > /dev/null 2>&1; then
         echo "SpiceDB is ready."
         break
     fi

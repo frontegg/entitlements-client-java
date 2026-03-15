@@ -67,6 +67,32 @@ class PermissionSpiceDBQueryTest {
     }
 
     @Test
+    void query_singlePermission_userConditionalPermission_returnsAllowed() {
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req ->
+                responseForRequest(req, CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION,
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION));
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new PermissionRequestContext("reports:read"));
+
+        assertTrue(result.result(), "user conditional permission → result must be true");
+    }
+
+    @Test
+    void query_singlePermission_tenantConditionalPermission_returnsAllowed() {
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req ->
+                responseForRequest(req, CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION,
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION));
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new PermissionRequestContext("reports:read"));
+
+        assertTrue(result.result(), "tenant conditional permission → result must be true");
+    }
+
+    @Test
     void query_singlePermission_bothDenied_returnsDenied() {
         PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req ->
                 responseForRequest(req, CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION,
