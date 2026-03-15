@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -229,6 +230,106 @@ class LookupSpiceDBQueryTest {
         assertEquals("viewer",
                 grpcRequest.getPermission(),
                 "permission must match the request permission");
+    }
+
+    // -------------------------------------------------------------------------
+    // lookupResources — caveat context (time-based access)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void lookupResources_withAtTimestamp_requestIncludesCaveatContext() {
+        AtomicReference<LookupResourcesRequest> captured = new AtomicReference<>();
+
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> {
+                    captured.set(req);
+                    return Collections.emptyIterator();
+                },
+                req -> Collections.emptyIterator());
+
+        java.time.Instant at = java.time.Instant.parse("2026-03-01T00:00:00Z");
+        query.lookupResources(
+                new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
+                        "user", "Tim", "read_doc", "document", at));
+
+        LookupResourcesRequest grpcRequest = captured.get();
+        assertNotNull(grpcRequest);
+        assertTrue(grpcRequest.hasContext(),
+                "gRPC request must include caveat context when at is provided");
+        assertEquals(at.toString(),
+                grpcRequest.getContext().getFieldsOrThrow("at").getStringValue(),
+                "caveat context 'at' field must contain ISO-8601 timestamp");
+    }
+
+    @Test
+    void lookupResources_withNullAt_requestHasNoCaveatContext() {
+        AtomicReference<LookupResourcesRequest> captured = new AtomicReference<>();
+
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> {
+                    captured.set(req);
+                    return Collections.emptyIterator();
+                },
+                req -> Collections.emptyIterator());
+
+        query.lookupResources(
+                new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
+                        "user", "Tim", "read_doc", "document"));
+
+        LookupResourcesRequest grpcRequest = captured.get();
+        assertNotNull(grpcRequest);
+        assertFalse(grpcRequest.hasContext(),
+                "gRPC request must not include caveat context when at is null");
+    }
+
+    // -------------------------------------------------------------------------
+    // lookupSubjects — caveat context (time-based access)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void lookupSubjects_withAtTimestamp_requestIncludesCaveatContext() {
+        AtomicReference<com.authzed.api.v1.LookupSubjectsRequest> captured = new AtomicReference<>();
+
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> Collections.emptyIterator(),
+                req -> {
+                    captured.set(req);
+                    return Collections.emptyIterator();
+                });
+
+        java.time.Instant at = java.time.Instant.parse("2026-02-01T00:00:00Z");
+        query.lookupSubjects(
+                new com.frontegg.sdk.entitlements.model.LookupSubjectsRequest(
+                        "document", "doc-1", "read_doc", "user", at));
+
+        com.authzed.api.v1.LookupSubjectsRequest grpcRequest = captured.get();
+        assertNotNull(grpcRequest);
+        assertTrue(grpcRequest.hasContext(),
+                "gRPC request must include caveat context when at is provided");
+        assertEquals(at.toString(),
+                grpcRequest.getContext().getFieldsOrThrow("at").getStringValue(),
+                "caveat context 'at' field must contain ISO-8601 timestamp");
+    }
+
+    @Test
+    void lookupSubjects_withNullAt_requestHasNoCaveatContext() {
+        AtomicReference<com.authzed.api.v1.LookupSubjectsRequest> captured = new AtomicReference<>();
+
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> Collections.emptyIterator(),
+                req -> {
+                    captured.set(req);
+                    return Collections.emptyIterator();
+                });
+
+        query.lookupSubjects(
+                new com.frontegg.sdk.entitlements.model.LookupSubjectsRequest(
+                        "document", "doc-1", "read_doc", "user"));
+
+        com.authzed.api.v1.LookupSubjectsRequest grpcRequest = captured.get();
+        assertNotNull(grpcRequest);
+        assertFalse(grpcRequest.hasContext(),
+                "gRPC request must not include caveat context when at is null");
     }
 
     // -------------------------------------------------------------------------

@@ -7,6 +7,7 @@ import com.authzed.api.v1.SubjectReference;
 import com.frontegg.sdk.entitlements.model.EntitlementsResult;
 import com.frontegg.sdk.entitlements.model.EntityRequestContext;
 import com.frontegg.sdk.entitlements.model.EntitySubjectContext;
+import com.google.protobuf.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,16 +68,25 @@ class FgaSpiceDBQuery {
                 .setObjectId(b64ResourceId)
                 .build();
 
-        CheckPermissionRequest request = CheckPermissionRequest.newBuilder()
+        Struct caveatContext = CaveatContextBuilder.build(null, requestCtx.at());
+
+        CheckPermissionRequest.Builder requestBuilder = CheckPermissionRequest.newBuilder()
                 .setSubject(subject)
                 .setResource(resource)
-                .setPermission(requestCtx.relation())
-                .build();
+                .setPermission(requestCtx.relation());
+
+        if (caveatContext != null) {
+            requestBuilder.setContext(caveatContext);
+        }
+
+        CheckPermissionRequest request = requestBuilder.build();
 
         CheckPermissionResponse response = executor.execute(request);
 
         boolean allowed = response.getPermissionship()
-                == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION;
+                == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION
+                || response.getPermissionship()
+                == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION;
 
         log.debug("FGA check result allowed={} entityType={} entityId={} resourceType={} resourceId={} relation={}",
                 allowed,

@@ -98,7 +98,8 @@ class RouteSpiceDBQuery {
         boolean entitled = response.getPairsList().stream()
                 .filter(CheckBulkPermissionsPair::hasItem)
                 .map(pair -> pair.getItem().getPermissionship())
-                .anyMatch(p -> p == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION);
+                .anyMatch(p -> p == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION
+                        || p == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION);
 
         log.debug("Route check result entitled={} userId={} method={} path={}",
                 entitled, userCtx.userId(), routeCtx.method(), routeCtx.path());

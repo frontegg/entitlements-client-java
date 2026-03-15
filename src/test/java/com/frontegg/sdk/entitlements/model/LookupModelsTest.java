@@ -3,11 +3,14 @@ package com.frontegg.sdk.entitlements.model;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -76,6 +79,41 @@ class LookupModelsTest {
             assertEquals(r1, r2);
             assertEquals(r1.hashCode(), r2.hashCode());
         }
+
+        @Test
+        void convenienceConstructor_atIsNull() {
+            LookupResourcesRequest req = new LookupResourcesRequest("u", "1", "p", "r");
+            assertNull(req.at(), "convenience constructor must set at to null");
+        }
+
+        @Test
+        void fullConstructor_withAt_fieldsAreSet() {
+            Instant at = Instant.parse("2026-03-01T00:00:00Z");
+            LookupResourcesRequest req = new LookupResourcesRequest("u", "1", "p", "r", at);
+
+            assertEquals(at, req.at());
+            assertEquals("u", req.subjectType());
+        }
+
+        @Test
+        void recordEquality_differentAt_areNotEqual() {
+            Instant at1 = Instant.parse("2026-01-01T00:00:00Z");
+            Instant at2 = Instant.parse("2026-02-01T00:00:00Z");
+            LookupResourcesRequest r1 = new LookupResourcesRequest("u", "1", "p", "r", at1);
+            LookupResourcesRequest r2 = new LookupResourcesRequest("u", "1", "p", "r", at2);
+
+            assertNotEquals(r1, r2);
+        }
+
+        @Test
+        void recordEquality_sameAt_areEqual() {
+            Instant at = Instant.parse("2026-01-01T00:00:00Z");
+            LookupResourcesRequest r1 = new LookupResourcesRequest("u", "1", "p", "r", at);
+            LookupResourcesRequest r2 = new LookupResourcesRequest("u", "1", "p", "r", at);
+
+            assertEquals(r1, r2);
+            assertEquals(r1.hashCode(), r2.hashCode());
+        }
     }
 
     // =========================================================================
@@ -127,6 +165,31 @@ class LookupModelsTest {
 
             assertEquals(r1, r2);
             assertEquals(r1.hashCode(), r2.hashCode());
+        }
+
+        @Test
+        void convenienceConstructor_atIsNull() {
+            LookupSubjectsRequest req = new LookupSubjectsRequest("d", "1", "v", "u");
+            assertNull(req.at(), "convenience constructor must set at to null");
+        }
+
+        @Test
+        void fullConstructor_withAt_fieldsAreSet() {
+            Instant at = Instant.parse("2026-02-01T00:00:00Z");
+            LookupSubjectsRequest req = new LookupSubjectsRequest("d", "1", "v", "u", at);
+
+            assertEquals(at, req.at());
+            assertEquals("d", req.resourceType());
+        }
+
+        @Test
+        void recordEquality_differentAt_areNotEqual() {
+            Instant at1 = Instant.parse("2026-01-01T00:00:00Z");
+            Instant at2 = Instant.parse("2026-02-01T00:00:00Z");
+            LookupSubjectsRequest r1 = new LookupSubjectsRequest("d", "1", "v", "u", at1);
+            LookupSubjectsRequest r2 = new LookupSubjectsRequest("d", "1", "v", "u", at2);
+
+            assertNotEquals(r1, r2);
         }
     }
 

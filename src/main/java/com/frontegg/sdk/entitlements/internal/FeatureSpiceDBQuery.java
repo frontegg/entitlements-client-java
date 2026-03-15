@@ -92,7 +92,8 @@ class FeatureSpiceDBQuery {
         boolean entitled = response.getPairsList().stream()
                 .filter(CheckBulkPermissionsPair::hasItem)
                 .map(pair -> pair.getItem().getPermissionship())
-                .anyMatch(p -> p == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION);
+                .anyMatch(p -> p == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION
+                        || p == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION);
 
         log.debug("Feature check result entitled={} userId={} featureKey={}",
                 entitled, userCtx.userId(), featureCtx.featureKey());

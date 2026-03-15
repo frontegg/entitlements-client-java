@@ -101,7 +101,9 @@ class PermissionSpiceDBQuery {
         Set<String> entitledPermissionIds = response.getPairsList().stream()
                 .filter(CheckBulkPermissionsPair::hasItem)
                 .filter(pair -> pair.getItem().getPermissionship()
-                        == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION)
+                        == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION
+                        || pair.getItem().getPermissionship()
+                        == CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION)
                 .map(pair -> pair.getRequest().getResource().getObjectId())
                 .collect(Collectors.toSet());
 
