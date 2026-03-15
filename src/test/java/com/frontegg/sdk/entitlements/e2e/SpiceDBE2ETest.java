@@ -45,9 +45,44 @@ class SpiceDBE2ETest {
 
         // Seed schema and relationships via gRPC (idempotent)
         schemaWriter = new SpiceDBSchemaWriter(endpoint, token);
-        schemaWriter.writeSchema();
-        schemaWriter.writeRelationships();
-        schemaWriter.writeCaveatRelationships();
+        try {
+            schemaWriter.writeSchema();
+            System.out.println("=== DEBUG: Schema written OK ===");
+        } catch (Exception e) {
+            System.out.println("=== DEBUG: Schema write FAILED: " + e.getMessage() + " ===");
+            throw e;
+        }
+        try {
+            schemaWriter.writeRelationships();
+            System.out.println("=== DEBUG: Relationships written OK ===");
+        } catch (Exception e) {
+            System.out.println("=== DEBUG: Relationships write FAILED: " + e.getMessage() + " ===");
+            throw e;
+        }
+        try {
+            schemaWriter.writeCaveatRelationships();
+            System.out.println("=== DEBUG: Caveat relationships written OK ===");
+        } catch (Exception e) {
+            System.out.println("=== DEBUG: Caveat relationships write FAILED: " + e.getMessage() + " ===");
+            throw e;
+        }
+
+        // Verify schema was actually written
+        String schema = schemaWriter.readSchema();
+        System.out.println("=== DEBUG: Schema contains 'document': " + schema.contains("document") + " ===");
+        System.out.println("=== DEBUG: Schema contains 'active_at': " + schema.contains("active_at") + " ===");
+
+        // Verify relationships were written
+        var docRels = schemaWriter.readRelationships("document");
+        System.out.println("=== DEBUG: Document relationships count: " + docRels.size() + " ===");
+        for (String rel : docRels) {
+            System.out.println("=== DEBUG: Rel: " + rel + " ===");
+        }
+        var folderRels = schemaWriter.readRelationships("folder");
+        System.out.println("=== DEBUG: Folder relationships count: " + folderRels.size() + " ===");
+        for (String rel : folderRels) {
+            System.out.println("=== DEBUG: Rel: " + rel + " ===");
+        }
 
         ClientConfiguration config = ClientConfiguration.builder()
                 .engineEndpoint(endpoint)
@@ -56,6 +91,20 @@ class SpiceDBE2ETest {
                 .build();
 
         client = EntitlementsClientFactory.create(config);
+
+        // Debug: test a simple check right after setup
+        System.out.println("=== DEBUG: Testing Tim read_doc Tim's_salary_Jan at 2026-01-01 ===");
+        EntitlementsResult debugResult = client.isEntitledTo(
+                new EntitySubjectContext("frontegg_user", "Tim"),
+                new EntityRequestContext("document", "Tim's_salary_Jan", "read_doc",
+                        Instant.parse("2026-01-01T00:00:00Z")));
+        System.out.println("=== DEBUG: result=" + debugResult.result() + " ===");
+
+        // Also test WITHOUT caveat context to see if relationship exists at all
+        EntitlementsResult debugResult2 = client.isEntitledTo(
+                new EntitySubjectContext("frontegg_user", "Tim"),
+                new EntityRequestContext("document", "Tim's_salary_Jan", "read_doc", null));
+        System.out.println("=== DEBUG: result without at=" + debugResult2.result() + " ===");
     }
 
     @AfterAll

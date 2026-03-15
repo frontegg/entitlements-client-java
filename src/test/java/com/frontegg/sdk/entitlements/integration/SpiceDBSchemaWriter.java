@@ -248,6 +248,41 @@ public class SpiceDBSchemaWriter {
     }
 
     /**
+     * Reads back the current schema from SpiceDB (for diagnostics).
+     *
+     * @return the schema text currently stored in SpiceDB
+     */
+    public String readSchema() {
+        var response = schemaStub.readSchema(
+                com.authzed.api.v1.ReadSchemaRequest.newBuilder().build());
+        return response.getSchemaText();
+    }
+
+    /**
+     * Reads back all relationships for a given resource type (for diagnostics).
+     *
+     * @return list of relationship strings
+     */
+    public java.util.List<String> readRelationships(String resourceType) {
+        var response = permissionsStub.readRelationships(
+                com.authzed.api.v1.ReadRelationshipsRequest.newBuilder()
+                        .setRelationshipFilter(com.authzed.api.v1.RelationshipFilter.newBuilder()
+                                .setResourceType(resourceType)
+                                .build())
+                        .build());
+        java.util.List<String> results = new java.util.ArrayList<>();
+        while (response.hasNext()) {
+            var r = response.next().getRelationship();
+            results.add(r.getResource().getObjectType() + ":" + r.getResource().getObjectId()
+                    + "#" + r.getRelation()
+                    + "@" + r.getSubject().getObject().getObjectType() + ":" + r.getSubject().getObject().getObjectId()
+                    + (r.hasOptionalCaveat() && !r.getOptionalCaveat().getCaveatName().isEmpty()
+                            ? "[" + r.getOptionalCaveat().getCaveatName() + "]" : ""));
+        }
+        return results;
+    }
+
+    /**
      * Shuts down the underlying gRPC channel. Call in {@code @AfterAll}.
      */
     public void close() {
