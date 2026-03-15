@@ -36,7 +36,9 @@ jobs:
           mvn versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
           mvn -f entitlements-client-bom/pom.xml versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
           mvn -f entitlements-client-spring-boot-starter/pom.xml versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
-          mvn -f entitlements-client-test/pom.xml versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false -Dentitlements-client.version=$VERSION
+          mvn -f entitlements-client-spring-boot-starter/pom.xml versions:set-property -Dproperty=entitlements-client.version -DnewVersion=$VERSION -DgenerateBackupPoms=false
+          mvn -f entitlements-client-test/pom.xml versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
+          mvn -f entitlements-client-test/pom.xml versions:set-property -Dproperty=entitlements-client.version -DnewVersion=$VERSION -DgenerateBackupPoms=false
       - name: Publish SDK
         run: mvn deploy --batch-mode -P release -DskipTests
         env:
