@@ -58,6 +58,7 @@ services:
         'serve',
         '--datastore-engine=cockroachdb',
         '--datastore-conn-uri=postgres://root:password@spicedb-cockroachdb:26257/spicedb?sslmode=disable',
+        '--datastore-revision-quantization-interval=0s',
         '--log-level=info'
       ]
     environment:
