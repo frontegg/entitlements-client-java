@@ -209,10 +209,16 @@ public class SpiceDBSchemaWriter {
         if (activeFrom != null) {
             contextBuilder.putFields("activeFrom",
                     Value.newBuilder().setStringValue(activeFrom).build());
+        } else {
+            contextBuilder.putFields("activeFrom",
+                    Value.newBuilder().setNullValueValue(0).build());
         }
         if (activeUntil != null) {
             contextBuilder.putFields("activeUntil",
                     Value.newBuilder().setStringValue(activeUntil).build());
+        } else {
+            contextBuilder.putFields("activeUntil",
+                    Value.newBuilder().setNullValueValue(0).build());
         }
 
         return RelationshipUpdate.newBuilder()
