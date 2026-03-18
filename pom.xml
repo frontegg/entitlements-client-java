@@ -46,7 +46,7 @@
 
         <!-- Dependency versions -->
         <authzed.version>1.5.4</authzed.version>
-        <grpc.version>1.78.0</grpc.version>
+        <grpc.version>1.80.0</grpc.version>
         <protobuf.version>4.33.5</protobuf.version>
         <slf4j.version>2.0.17</slf4j.version>
         <junit-jupiter.version>5.10.3</junit-jupiter.version>
