@@ -63,12 +63,10 @@ class LookupModelsTest {
         }
 
         @Test
-        void validConstruction_emptyStringValues_areAllowed() {
-            // Empty strings pass the null check — callers are responsible for meaningful values
-            LookupResourcesRequest req = new LookupResourcesRequest("", "", "", "");
-
-            assertEquals("", req.subjectType());
-            assertEquals("", req.subjectId());
+        void construction_blankStringValues_throwsIllegalArgumentException() {
+            assertThrows(IllegalArgumentException.class,
+                    () -> new LookupResourcesRequest("", "", "", ""),
+                    "blank required fields must be rejected");
         }
 
         @Test
@@ -113,6 +111,34 @@ class LookupModelsTest {
 
             assertEquals(r1, r2);
             assertEquals(r1.hashCode(), r2.hashCode());
+        }
+
+        @Test
+        void lookupResourcesRequest_zeroLimit_throwsIllegalArgument() {
+            // H3: SpiceDB interprets limit=0 as "no limit"; reject it early to prevent
+            // silent unbounded queries
+            assertThrows(IllegalArgumentException.class,
+                    () -> new LookupResourcesRequest("u", "1", "p", "r", null, 0, null),
+                    "limit=0 must throw IllegalArgumentException");
+        }
+
+        @Test
+        void lookupResourcesRequest_negativeLimit_throwsIllegalArgument() {
+            assertThrows(IllegalArgumentException.class,
+                    () -> new LookupResourcesRequest("u", "1", "p", "r", null, -1, null),
+                    "negative limit must throw IllegalArgumentException");
+        }
+
+        @Test
+        void lookupResourcesRequest_positiveLimit_isAccepted() {
+            LookupResourcesRequest req = new LookupResourcesRequest("u", "1", "p", "r", null, 100, null);
+            assertEquals(100, req.limit());
+        }
+
+        @Test
+        void lookupResourcesRequest_nullLimit_isAccepted() {
+            LookupResourcesRequest req = new LookupResourcesRequest("u", "1", "p", "r", null, null, null);
+            assertNull(req.limit());
         }
     }
 

@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -426,12 +427,188 @@ class LookupSpiceDBQueryTest {
     }
 
     // -------------------------------------------------------------------------
+    // lookupResources — pagination (limit and cursor)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void lookupResources_withLimit_setsLimitOnRequest() {
+        AtomicReference<LookupResourcesRequest> captured = new AtomicReference<>();
+
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> {
+                    captured.set(req);
+                    return Collections.emptyIterator();
+                },
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
+
+        query.lookupResources(
+                new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
+                        "frontegg_user", "user-1", "entitled", "frontegg_feature",
+                        null, 10, null));
+
+        LookupResourcesRequest grpcRequest = captured.get();
+        assertNotNull(grpcRequest, "gRPC request must have been captured");
+        assertEquals(10, grpcRequest.getOptionalLimit(),
+                "optionalLimit must match the limit supplied in the SDK request");
+    }
+
+    @Test
+    void lookupResources_withCursor_setCursorOnRequest() {
+        AtomicReference<LookupResourcesRequest> captured = new AtomicReference<>();
+
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> {
+                    captured.set(req);
+                    return Collections.emptyIterator();
+                },
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
+
+        query.lookupResources(
+                new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
+                        "frontegg_user", "user-1", "entitled", "frontegg_feature",
+                        null, null, "page-token-abc"));
+
+        LookupResourcesRequest grpcRequest = captured.get();
+        assertNotNull(grpcRequest, "gRPC request must have been captured");
+        assertTrue(grpcRequest.hasOptionalCursor(),
+                "gRPC request must include optionalCursor when cursor is set");
+        assertEquals("page-token-abc", grpcRequest.getOptionalCursor().getToken(),
+                "optionalCursor token must match the cursor supplied in the SDK request");
+    }
+
+    @Test
+    void lookupResources_resultsEqualLimit_returnsCursor() {
+        String rawId1 = "res-1";
+        String rawId2 = "res-2";
+        String cursorToken = "next-page-token";
+
+        com.authzed.api.v1.Cursor afterCursor =
+                com.authzed.api.v1.Cursor.newBuilder().setToken(cursorToken).build();
+
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> iteratorOf(
+                        resourcesResponseWithCursor(base64(rawId1), afterCursor),
+                        resourcesResponseWithCursor(base64(rawId2), afterCursor)),
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
+
+        // limit=2, responses=2  →  should return nextCursor
+        com.frontegg.sdk.entitlements.model.LookupResult result = query.lookupResources(
+                new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
+                        "frontegg_user", "user-1", "entitled", "frontegg_feature",
+                        null, 2, null));
+
+        assertEquals(2, result.entityIds().size());
+        assertEquals(cursorToken, result.nextCursor(),
+                "nextCursor must be the last response's afterResultCursor token when result count == limit");
+    }
+
+    @Test
+    void lookupResources_resultsLessThanLimit_returnsNullCursor() {
+        String rawId = "only-result";
+        com.authzed.api.v1.Cursor afterCursor =
+                com.authzed.api.v1.Cursor.newBuilder().setToken("should-not-appear").build();
+
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> iteratorOf(resourcesResponseWithCursor(base64(rawId), afterCursor)),
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
+
+        // limit=5, responses=1  →  nextCursor must be null
+        com.frontegg.sdk.entitlements.model.LookupResult result = query.lookupResources(
+                new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
+                        "frontegg_user", "user-1", "entitled", "frontegg_feature",
+                        null, 5, null));
+
+        assertEquals(1, result.entityIds().size());
+        assertNull(result.nextCursor(),
+                "nextCursor must be null when result count is less than the limit");
+    }
+
+    @Test
+    void lookupResources_fewerResultsThanLimit_returnsNullNextCursor() {
+        String rawId = "single-resource";
+        com.authzed.api.v1.Cursor cursor =
+                com.authzed.api.v1.Cursor.newBuilder().setToken("unused-token").build();
+
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> iteratorOf(resourcesResponseWithCursor(base64(rawId), cursor)),
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
+
+        // limit=2, results=1  →  nextCursor must be null
+        com.frontegg.sdk.entitlements.model.LookupResult result = query.lookupResources(
+                new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
+                        "frontegg_user", "user-1", "entitled", "frontegg_feature",
+                        null, 2, null));
+
+        assertEquals(1, result.entityIds().size());
+        assertNull(result.nextCursor(),
+                "nextCursor must be null when fewer results are returned than the limit");
+    }
+
+    @Test
+    void lookupResources_resultsEqualLimitButNoAfterCursor_returnsNullNextCursor() {
+        String rawId1 = "res-1";
+        String rawId2 = "res-2";
+
+        // Build responses without afterResultCursor set (no cursor in the last response)
+        LookupResourcesResponse resp1 = LookupResourcesResponse.newBuilder()
+                .setResourceObjectId(base64(rawId1))
+                .build();
+        LookupResourcesResponse resp2 = LookupResourcesResponse.newBuilder()
+                .setResourceObjectId(base64(rawId2))
+                .build();
+
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> iteratorOf(resp1, resp2),
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
+
+        // limit=2, results=2 but last response has NO afterResultCursor  →  nextCursor must be null
+        com.frontegg.sdk.entitlements.model.LookupResult result = query.lookupResources(
+                new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
+                        "frontegg_user", "user-1", "entitled", "frontegg_feature",
+                        null, 2, null));
+
+        assertEquals(2, result.entityIds().size());
+        assertNull(result.nextCursor(),
+                "nextCursor must be null when result count equals limit but last response has no afterResultCursor");
+    }
+
+    @Test
+    void lookupResources_defaultLimit_usedWhenLimitIsNull() {
+        AtomicReference<LookupResourcesRequest> captured = new AtomicReference<>();
+
+        LookupSpiceDBQuery query = new LookupSpiceDBQuery(
+                req -> {
+                    captured.set(req);
+                    return Collections.emptyIterator();
+                },
+                req -> Collections.emptyIterator(), TEST_CONSISTENCY);
+
+        // null limit  →  DEFAULT_LOOKUP_LIMIT (50) must be applied
+        query.lookupResources(
+                new com.frontegg.sdk.entitlements.model.LookupResourcesRequest(
+                        "frontegg_user", "user-1", "entitled", "frontegg_feature"));
+
+        LookupResourcesRequest grpcRequest = captured.get();
+        assertNotNull(grpcRequest, "gRPC request must have been captured");
+        assertEquals(LookupSpiceDBQuery.DEFAULT_LOOKUP_LIMIT, grpcRequest.getOptionalLimit(),
+                "optionalLimit must equal DEFAULT_LOOKUP_LIMIT when request.limit() is null");
+    }
+
+    // -------------------------------------------------------------------------
     // Helper factory methods
     // -------------------------------------------------------------------------
 
     private static LookupResourcesResponse resourcesResponse(String base64Id) {
         return LookupResourcesResponse.newBuilder()
                 .setResourceObjectId(base64Id)
+                .build();
+    }
+
+    private static LookupResourcesResponse resourcesResponseWithCursor(
+            String base64Id, com.authzed.api.v1.Cursor afterCursor) {
+        return LookupResourcesResponse.newBuilder()
+                .setResourceObjectId(base64Id)
+                .setAfterResultCursor(afterCursor)
                 .build();
     }
 

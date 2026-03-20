@@ -1,6 +1,7 @@
 package com.frontegg.sdk.entitlements.internal;
 
 import com.authzed.api.v1.Consistency;
+import com.authzed.api.v1.Cursor;
 import com.authzed.api.v1.LookupResourcesResponse;
 import com.authzed.api.v1.LookupSubjectsResponse;
 import com.authzed.api.v1.ObjectReference;
@@ -32,6 +33,8 @@ import java.util.function.Supplier;
 class LookupSpiceDBQuery {
 
     private static final Logger log = LoggerFactory.getLogger(LookupSpiceDBQuery.class);
+
+    static final int DEFAULT_LOOKUP_LIMIT = 50;
 
     private final LookupResourcesExecutor lookupResourcesExecutor;
     private final LookupSubjectsExecutor lookupSubjectsExecutor;
@@ -76,21 +79,42 @@ class LookupSpiceDBQuery {
             grpcRequestBuilder.setContext(caveatContext);
         }
 
+        int effectiveLimit = request.limit() != null ? request.limit() : DEFAULT_LOOKUP_LIMIT;
+        grpcRequestBuilder.setOptionalLimit(effectiveLimit);
+
+        String requestCursor = request.cursor();
+        if (requestCursor != null) {
+            grpcRequestBuilder.setOptionalCursor(
+                    Cursor.newBuilder().setToken(requestCursor).build());
+        }
+
         com.authzed.api.v1.LookupResourcesRequest grpcRequest = grpcRequestBuilder.build();
 
         Iterator<LookupResourcesResponse> responseIterator =
                 lookupResourcesExecutor.execute(grpcRequest);
 
-        List<String> resourceIds = new ArrayList<>();
+        List<LookupResourcesResponse> responses = new ArrayList<>();
         while (responseIterator.hasNext()) {
-            LookupResourcesResponse resp = responseIterator.next();
+            responses.add(responseIterator.next());
+        }
+
+        List<String> resourceIds = new ArrayList<>(responses.size());
+        for (LookupResourcesResponse resp : responses) {
             resourceIds.add(Base64Utils.decode(resp.getResourceObjectId()));
+        }
+
+        String nextCursor = null;
+        if (responses.size() == effectiveLimit) {
+            LookupResourcesResponse last = responses.get(responses.size() - 1);
+            if (last.hasAfterResultCursor()) {
+                nextCursor = last.getAfterResultCursor().getToken();
+            }
         }
 
         log.debug("LookupResources found {} resources subjectType={} subjectId={}",
                 resourceIds.size(), request.subjectType(), request.subjectId());
 
-        return new LookupResult(resourceIds);
+        return new LookupResult(resourceIds, nextCursor);
     }
 
     /**

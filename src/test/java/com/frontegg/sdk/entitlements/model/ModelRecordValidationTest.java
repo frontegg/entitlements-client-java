@@ -3,7 +3,6 @@ package com.frontegg.sdk.entitlements.model;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -11,8 +10,8 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -113,6 +112,33 @@ class ModelRecordValidationTest {
             assertThrows(NullPointerException.class,
                     () -> new UserSubjectContext("user-1", "tenant-1", null));
         }
+
+        @Test
+        void userSubjectContext_nullPermissions_normalizedToEmptyList() {
+            // Four-arg constructor with null permissions
+            UserSubjectContext ctx = new UserSubjectContext("user-1", "tenant-1", null, Map.of());
+
+            assertNotNull(ctx.permissions(), "permissions() must not return null");
+            assertTrue(ctx.permissions().isEmpty(), "null permissions must be normalized to empty list");
+        }
+
+        @Test
+        void userSubjectContext_permissionsDefensiveCopy_mutationNotReflected() {
+            List<String> originalPermissions = new ArrayList<>();
+            originalPermissions.add("perm1");
+            originalPermissions.add("perm2");
+
+            UserSubjectContext ctx = new UserSubjectContext("user-1", "tenant-1", originalPermissions, Map.of());
+
+            // Modify original list
+            originalPermissions.add("perm3");
+            originalPermissions.set(0, "modified");
+
+            // Context's permissions should not change
+            assertEquals(2, ctx.permissions().size(), "permissions must be defensively copied");
+            assertEquals("perm1", ctx.permissions().get(0), "original modification must not be reflected");
+            assertEquals("perm2", ctx.permissions().get(1));
+        }
     }
 
     @Nested
@@ -204,154 +230,45 @@ class ModelRecordValidationTest {
             }
         }
 
-        @Test
-        void convenientConstructor_atDefaultsToNull() {
-            FeatureRequestContext ctx = new FeatureRequestContext("feature-key");
-            assertNull(ctx.at(), "convenience constructor must set at=null");
-        }
-
-        @Test
-        void twoArgConstructor_withAt_storesInstant() {
-            Instant at = Instant.parse("2026-01-01T00:00:00Z");
-            FeatureRequestContext ctx = new FeatureRequestContext("feature-key", at);
-            assertEquals(at, ctx.at(), "at field must match the provided Instant");
-        }
-
-        @Test
-        void twoArgConstructor_withNullAt_isAllowed() {
-            FeatureRequestContext ctx = new FeatureRequestContext("feature-key", null);
-            assertNull(ctx.at(), "null at must be accepted");
-        }
     }
 
     @Nested
     class PermissionRequestContextTests {
 
         @Test
-        void nullPermissionKeys_throwsNullPointerException() {
+        void nullPermissionKey_throwsNullPointerException() {
             assertThrows(NullPointerException.class,
-                    () -> new PermissionRequestContext((List<String>) null));
+                    () -> new PermissionRequestContext(null));
         }
 
         @Test
-        void emptyPermissionKeys_throwsIllegalArgumentException() {
+        void blankPermissionKey_throwsIllegalArgumentException() {
             assertThrows(IllegalArgumentException.class,
-                    () -> new PermissionRequestContext(List.of()));
-        }
-
-        @Test
-        void nullEntryInList_throwsIllegalArgumentException() {
-            List<String> keys = new ArrayList<>();
-            keys.add("permission1");
-            keys.add(null);
-
-            // The implementation checks for null or blank entries and throws IllegalArgumentException
+                    () -> new PermissionRequestContext(""));
             assertThrows(IllegalArgumentException.class,
-                    () -> new PermissionRequestContext(keys));
+                    () -> new PermissionRequestContext("   "));
         }
 
         @Test
-        void blankEntryInList_throwsIllegalArgumentException() {
-            // The implementation validates that individual entries are not blank
-            List<String> keys = new ArrayList<>();
-            keys.add("permission1");
-            keys.add("");
-
-            assertThrows(IllegalArgumentException.class,
-                    () -> new PermissionRequestContext(keys),
-                    "blank entries in permission keys must throw IllegalArgumentException");
-        }
-
-        @Test
-        void validConstruction_singlePermission_threeArgConstructor() {
+        void validConstruction() {
             PermissionRequestContext ctx = new PermissionRequestContext("reports:read");
-
-            assertEquals(1, ctx.permissionKeys().size());
-            assertEquals("reports:read", ctx.permissionKeys().get(0));
+            assertEquals("reports:read", ctx.permissionKey());
         }
 
         @Test
-        void validConstruction_singlePermission_convenience() {
-            PermissionRequestContext ctx = new PermissionRequestContext("reports:read");
-
-            assertEquals(1, ctx.permissionKeys().size());
-            assertEquals("reports:read", ctx.permissionKeys().get(0));
-        }
-
-        @Test
-        void validConstruction_multiplePermissions() {
-            PermissionRequestContext ctx = new PermissionRequestContext(
-                    List.of("reports:read", "reports:export", "reports:delete"));
-
-            assertEquals(3, ctx.permissionKeys().size());
-            assertEquals("reports:read", ctx.permissionKeys().get(0));
-            assertEquals("reports:export", ctx.permissionKeys().get(1));
-            assertEquals("reports:delete", ctx.permissionKeys().get(2));
-        }
-
-        @Test
-        void permissionKeysDefensivelyCopied_originalListModificationDoesNotAffectRecord() {
-            List<String> originalKeys = new ArrayList<>();
-            originalKeys.add("permission1");
-            originalKeys.add("permission2");
-
-            PermissionRequestContext ctx = new PermissionRequestContext(originalKeys);
-
-            // Modify original list
-            originalKeys.add("permission3");
-            originalKeys.set(0, "modified");
-
-            // Record's keys should not change
-            assertEquals(2, ctx.permissionKeys().size());
-            assertEquals("permission1", ctx.permissionKeys().get(0));
-        }
-
-        @Test
-        void permissionKeysAreImmutable_attemptToModifyThrowsException() {
-            PermissionRequestContext ctx = new PermissionRequestContext(
-                    List.of("permission1"));
-
-            assertThrows(UnsupportedOperationException.class,
-                    () -> ctx.permissionKeys().add("permission2"));
-            assertThrows(UnsupportedOperationException.class,
-                    () -> ctx.permissionKeys().set(0, "modified"));
-        }
-
-        @Test
-        void validConstruction_largePermissionList() {
-            List<String> keys = new ArrayList<>();
-            for (int i = 0; i < 100; i++) {
-                keys.add("permission_" + i);
+        void validConstruction_variousPermissionKeys() {
+            String[] keys = {
+                    "reports:read",
+                    "reports:export",
+                    "admin:*",
+                    "fe.billing.read"
+            };
+            for (String key : keys) {
+                PermissionRequestContext ctx = new PermissionRequestContext(key);
+                assertEquals(key, ctx.permissionKey());
             }
-
-            PermissionRequestContext ctx = new PermissionRequestContext(keys);
-            assertEquals(100, ctx.permissionKeys().size());
         }
 
-        @Test
-        void convenientStringConstructor_atDefaultsToNull() {
-            PermissionRequestContext ctx = new PermissionRequestContext("reports:read");
-            assertNull(ctx.at(), "string convenience constructor must set at=null");
-        }
-
-        @Test
-        void convenientListConstructor_atDefaultsToNull() {
-            PermissionRequestContext ctx = new PermissionRequestContext(List.of("reports:read"));
-            assertNull(ctx.at(), "list convenience constructor must set at=null");
-        }
-
-        @Test
-        void fullConstructor_withAt_storesInstant() {
-            Instant at = Instant.parse("2026-06-01T10:00:00Z");
-            PermissionRequestContext ctx = new PermissionRequestContext(List.of("reports:read"), at);
-            assertEquals(at, ctx.at(), "at field must match the provided Instant");
-        }
-
-        @Test
-        void fullConstructor_withNullAt_isAllowed() {
-            PermissionRequestContext ctx = new PermissionRequestContext(List.of("reports:read"), null);
-            assertNull(ctx.at(), "null at must be accepted");
-        }
     }
 
     @Nested
@@ -461,22 +378,6 @@ class ModelRecordValidationTest {
             RouteRequestContext ctx = new RouteRequestContext("GET", "/api/v1/reports");
             assertEquals("GET", ctx.method());
             assertEquals("/api/v1/reports", ctx.path());
-            assertNull(ctx.at(), "two-arg convenience constructor must set at=null");
-        }
-
-        @Test
-        void threeArgConstructor_withAt_storesInstant() {
-            Instant at = Instant.parse("2026-03-01T09:00:00Z");
-            RouteRequestContext ctx = new RouteRequestContext("POST", "/api/v1/data", at);
-            assertEquals("POST", ctx.method());
-            assertEquals("/api/v1/data", ctx.path());
-            assertEquals(at, ctx.at(), "at field must match the provided Instant");
-        }
-
-        @Test
-        void threeArgConstructor_withNullAt_isAllowed() {
-            RouteRequestContext ctx = new RouteRequestContext("DELETE", "/api/v1/items/1", null);
-            assertNull(ctx.at(), "null at must be accepted");
         }
     }
 

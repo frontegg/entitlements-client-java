@@ -51,7 +51,8 @@ class SpiceDBQueryClientTest {
         PermissionSpiceDBQuery capturedPermissionQuery = new PermissionSpiceDBQuery(req -> {
             permissionQueryInvoked.set(true);
             return CheckBulkPermissionsResponse.newBuilder().build();
-        }, consistency);
+        }, req -> java.util.List.of(com.authzed.api.v1.LookupSubjectsResponse.newBuilder().build()).iterator(),
+                consistency);
 
         FgaSpiceDBQuery capturedFgaQuery = new FgaSpiceDBQuery(req -> {
             fgaQueryInvoked.set(true);
@@ -61,10 +62,14 @@ class SpiceDBQueryClientTest {
                     .build();
         }, consistency);
 
-        RouteSpiceDBQuery capturedRouteQuery = new RouteSpiceDBQuery(req -> {
-            routeQueryInvoked.set(true);
-            return CheckBulkPermissionsResponse.newBuilder().build();
-        }, consistency);
+        // ReadRelationships returns a ruleBased rule matching any route so the bulk executor is reached
+        RouteSpiceDBQuery capturedRouteQuery = new RouteSpiceDBQuery(
+                req -> List.of(RouteSpiceDBQueryTest.ruleBasedRelationship(".*", 0)),
+                req -> {
+                    routeQueryInvoked.set(true);
+                    return CheckBulkPermissionsResponse.newBuilder().build();
+                },
+                consistency);
 
         queryClient = new SpiceDBQueryClient(capturedFeatureQuery, capturedPermissionQuery,
                 capturedFgaQuery, capturedRouteQuery);
@@ -91,7 +96,7 @@ class SpiceDBQueryClientTest {
     @Test
     void execute_permissionRequestContext_dispatchesToPermissionQuery() {
         EntitlementsResult result = assertDoesNotThrow(
-                () -> queryClient.execute(userCtx, new PermissionRequestContext(List.of("read:data"))),
+                () -> queryClient.execute(userCtx, new PermissionRequestContext("read:data")),
                 "PermissionRequestContext must not throw UnsupportedOperationException");
 
         assertTrue(permissionQueryInvoked.get(),

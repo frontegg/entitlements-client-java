@@ -24,9 +24,9 @@ import java.util.function.Supplier;
  * <p>Sends a {@code CheckBulkPermissions} request with two items:
  * <ol>
  *   <li>subject {@code frontegg_user:<base64(userId)>} → resource
- *       {@code frontegg_feature:<base64(featureKey)>}, relation {@code entitled}</li>
+ *       {@code frontegg_feature:<base64(featureKey)>}, permission {@code access}</li>
  *   <li>subject {@code frontegg_tenant:<base64(tenantId)>} → resource
- *       {@code frontegg_feature:<base64(featureKey)>}, relation {@code entitled}</li>
+ *       {@code frontegg_feature:<base64(featureKey)>}, permission {@code access}</li>
  * </ol>
  *
  * <p>Returns {@link EntitlementsResult#allowed()} if <em>any</em> pair comes back with
@@ -39,7 +39,7 @@ class FeatureSpiceDBQuery {
 
     private static final Logger log = LoggerFactory.getLogger(FeatureSpiceDBQuery.class);
 
-    private static final String RELATION_ENTITLED = "entitled";
+    private static final String RELATION_ENTITLED = "access";
     private static final String TYPE_USER = "frontegg_user";
     private static final String TYPE_TENANT = "frontegg_tenant";
     private static final String TYPE_FEATURE = "frontegg_feature";
@@ -73,7 +73,7 @@ class FeatureSpiceDBQuery {
                 .setObjectId(b64FeatureKey)
                 .build();
 
-        Struct caveatContext = CaveatContextBuilder.build(userCtx.attributes(), featureCtx.at());
+        Struct caveatContext = CaveatContextBuilder.buildForTargetingCaveat(userCtx.attributes(), null);
 
         CheckBulkPermissionsRequestItem userItem = buildItem(
                 TYPE_USER, b64UserId, featureResource, caveatContext);
@@ -140,9 +140,10 @@ class FeatureSpiceDBQuery {
                         .setResource(resource)
                         .setPermission(RELATION_ENTITLED);
 
-        if (caveatContext != null) {
-            itemBuilder.setContext(caveatContext);
-        }
+        // buildForTargetingCaveat always returns a non-null Struct (it always includes `now`),
+        // so setContext is unconditional here — unlike the permission/route paths that use
+        // CaveatContextBuilder.build(), which returns null when there is nothing to encode.
+        itemBuilder.setContext(caveatContext);
 
         return itemBuilder.build();
     }

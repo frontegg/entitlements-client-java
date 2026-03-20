@@ -6,12 +6,13 @@ import com.authzed.api.v1.CheckBulkPermissionsRequestItem;
 import com.authzed.api.v1.CheckBulkPermissionsResponse;
 import com.authzed.api.v1.CheckBulkPermissionsResponseItem;
 import com.authzed.api.v1.CheckPermissionResponse;
+import com.google.rpc.Status;
+import com.frontegg.sdk.entitlements.exception.EntitlementsQueryException;
 import com.frontegg.sdk.entitlements.model.EntitlementsResult;
 import com.frontegg.sdk.entitlements.model.FeatureRequestContext;
 import com.frontegg.sdk.entitlements.model.UserSubjectContext;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -21,6 +22,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -132,14 +134,14 @@ class FeatureSpiceDBQueryTest {
         assertEquals(base64("user-abc"), userItem.getSubject().getObject().getObjectId());
         assertEquals("frontegg_feature", userItem.getResource().getObjectType());
         assertEquals(base64("my-feature"), userItem.getResource().getObjectId());
-        assertEquals("entitled", userItem.getPermission());
+        assertEquals("access", userItem.getPermission());
 
         CheckBulkPermissionsRequestItem tenantItem = request.getItems(1);
         assertEquals("frontegg_tenant", tenantItem.getSubject().getObject().getObjectType());
         assertEquals(base64("tenant-xyz"), tenantItem.getSubject().getObject().getObjectId());
         assertEquals("frontegg_feature", tenantItem.getResource().getObjectType());
         assertEquals(base64("my-feature"), tenantItem.getResource().getObjectId());
-        assertEquals("entitled", tenantItem.getPermission());
+        assertEquals("access", tenantItem.getPermission());
     }
 
     // -------------------------------------------------------------------------
@@ -147,7 +149,7 @@ class FeatureSpiceDBQueryTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void query_withAttributes_caveatContextAttached() {
+    void query_withAttributes_caveatContextContainsUserContextWrapper() {
         List<CheckBulkPermissionsRequest> requests = new ArrayList<>();
 
         FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(req -> {
@@ -157,21 +159,22 @@ class FeatureSpiceDBQueryTest {
 
         query.query(
                 new UserSubjectContext("user-1", "tenant-1",
-                        Map.of("plan", "enterprise", "active_at", "2026-01-01")),
+                        Map.of("plan", "enterprise")),
                 new FeatureRequestContext("feature-key"));
 
         assertEquals(1, requests.size());
         for (CheckBulkPermissionsRequestItem item : requests.get(0).getItemsList()) {
-            assertTrue(item.hasContext(),
-                    "caveat context must be present when attributes are non-empty");
-            assertNotNull(item.getContext());
-            assertTrue(item.getContext().getFieldsCount() > 0,
-                    "context struct must contain the user attributes");
+            assertTrue(item.hasContext(), "caveat context must always be present");
+            assertTrue(item.getContext().containsFields("user_context"),
+                    "context must be wrapped under 'user_context'");
+            com.google.protobuf.Struct uc = item.getContext().getFieldsOrThrow("user_context").getStructValue();
+            assertEquals("enterprise", uc.getFieldsOrThrow("plan").getStringValue());
+            assertTrue(uc.containsFields("now"), "user_context must contain 'now'");
         }
     }
 
     @Test
-    void query_withoutAttributes_caveatContextNotAttached() {
+    void query_withoutAttributes_caveatContextStillPresentWithNow() {
         List<CheckBulkPermissionsRequest> requests = new ArrayList<>();
 
         FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(req -> {
@@ -185,84 +188,37 @@ class FeatureSpiceDBQueryTest {
 
         assertEquals(1, requests.size());
         for (CheckBulkPermissionsRequestItem item : requests.get(0).getItemsList()) {
-            assertFalse(item.hasContext(),
-                    "caveat context must NOT be present when attributes are empty");
+            assertTrue(item.hasContext(), "caveat context must always be present");
+            assertTrue(item.getContext().containsFields("user_context"),
+                    "context must be wrapped under 'user_context'");
+            com.google.protobuf.Struct uc = item.getContext().getFieldsOrThrow("user_context").getStructValue();
+            assertTrue(uc.containsFields("now"), "user_context must contain 'now'");
         }
     }
 
     // -------------------------------------------------------------------------
-    // Time-based access — at parameter
+    // Error handling
     // -------------------------------------------------------------------------
 
     @Test
-    void query_withAt_caveatContextContainsAtField() {
-        List<CheckBulkPermissionsRequest> requests = new ArrayList<>();
-        Instant at = Instant.parse("2026-01-01T00:00:00Z");
+    void query_spiceDBReturnsErrorInPair_throwsEntitlementsQueryException() {
+        // Build a CheckBulkPermissionsResponse with an error pair
+        CheckBulkPermissionsResponse errorResponse = CheckBulkPermissionsResponse.newBuilder()
+                .addPairs(CheckBulkPermissionsPair.newBuilder()
+                        .setError(Status.newBuilder()
+                                .setCode(13)
+                                .setMessage("internal error")
+                                .build())
+                        .build())
+                .build();
 
-        FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(req -> {
-            requests.add(req);
-            return emptyResponse();
-        }, TEST_CONSISTENCY);
+        FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(req -> errorResponse, TEST_CONSISTENCY);
 
-        query.query(
-                new UserSubjectContext("user-1", "tenant-1"),
-                new FeatureRequestContext("feature-key", at));
-
-        assertEquals(1, requests.size());
-        for (CheckBulkPermissionsRequestItem item : requests.get(0).getItemsList()) {
-            assertTrue(item.hasContext(),
-                    "caveat context must be present when at is non-null");
-            assertTrue(item.getContext().containsFields("at"),
-                    "caveat context must contain 'at' field");
-            assertEquals("2026-01-01T00:00:00Z",
-                    item.getContext().getFieldsOrThrow("at").getStringValue(),
-                    "'at' field must be ISO-8601 string");
-        }
-    }
-
-    @Test
-    void query_withAtAndAttributes_caveatContextContainsBoth() {
-        List<CheckBulkPermissionsRequest> requests = new ArrayList<>();
-        Instant at = Instant.parse("2025-06-15T12:00:00Z");
-
-        FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(req -> {
-            requests.add(req);
-            return emptyResponse();
-        }, TEST_CONSISTENCY);
-
-        query.query(
-                new UserSubjectContext("user-1", "tenant-1", Map.of("plan", "enterprise")),
-                new FeatureRequestContext("feature-key", at));
-
-        assertEquals(1, requests.size());
-        for (CheckBulkPermissionsRequestItem item : requests.get(0).getItemsList()) {
-            assertTrue(item.hasContext());
-            assertEquals("enterprise",
-                    item.getContext().getFieldsOrThrow("plan").getStringValue());
-            assertEquals("2025-06-15T12:00:00Z",
-                    item.getContext().getFieldsOrThrow("at").getStringValue());
-        }
-    }
-
-    @Test
-    void query_withNullAt_caveatContextNotAttachedWhenNoAttributes() {
-        List<CheckBulkPermissionsRequest> requests = new ArrayList<>();
-
-        FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(req -> {
-            requests.add(req);
-            return emptyResponse();
-        }, TEST_CONSISTENCY);
-
-        // Explicitly pass null at — same as convenience constructor
-        query.query(
-                new UserSubjectContext("user-1", "tenant-1"),
-                new FeatureRequestContext("feature-key", null));
-
-        assertEquals(1, requests.size());
-        for (CheckBulkPermissionsRequestItem item : requests.get(0).getItemsList()) {
-            assertFalse(item.hasContext(),
-                    "caveat context must NOT be present when both attributes and at are absent");
-        }
+        assertThrows(EntitlementsQueryException.class,
+                () -> query.query(
+                        new UserSubjectContext("user-1", "tenant-1"),
+                        new FeatureRequestContext("feature-key")),
+                "error pair in response must throw EntitlementsQueryException");
     }
 
     // -------------------------------------------------------------------------

@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -41,14 +42,14 @@ class PermissionSpiceDBQueryTest {
             () -> Consistency.newBuilder().setMinimizeLatency(true).build();
 
     // -------------------------------------------------------------------------
-    // Single permission — permissionship outcome mapping
+    // Permissionship outcome mapping
     // -------------------------------------------------------------------------
 
     @Test
-    void query_singlePermission_userEntitled_returnsAllowed() {
-        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req ->
+    void query_userEntitled_returnsAllowed() {
+        PermissionSpiceDBQuery query = queryWith(req ->
                 responseForRequest(req, CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
-                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION), TEST_CONSISTENCY);
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION));
 
         EntitlementsResult result = query.query(
                 new UserSubjectContext("user-1", "tenant-1"),
@@ -59,10 +60,10 @@ class PermissionSpiceDBQueryTest {
     }
 
     @Test
-    void query_singlePermission_tenantEntitledUserDenied_returnsAllowed() {
-        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req ->
+    void query_tenantEntitledUserDenied_returnsAllowed() {
+        PermissionSpiceDBQuery query = queryWith(req ->
                 responseForRequest(req, CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION,
-                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION), TEST_CONSISTENCY);
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION));
 
         EntitlementsResult result = query.query(
                 new UserSubjectContext("user-1", "tenant-1"),
@@ -72,10 +73,10 @@ class PermissionSpiceDBQueryTest {
     }
 
     @Test
-    void query_singlePermission_userConditionalPermission_returnsDenied() {
-        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req ->
+    void query_userConditionalPermission_returnsDenied() {
+        PermissionSpiceDBQuery query = queryWith(req ->
                 responseForRequest(req, CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION,
-                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION), TEST_CONSISTENCY);
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION));
 
         EntitlementsResult result = query.query(
                 new UserSubjectContext("user-1", "tenant-1"),
@@ -85,10 +86,10 @@ class PermissionSpiceDBQueryTest {
     }
 
     @Test
-    void query_singlePermission_tenantConditionalPermission_returnsDenied() {
-        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req ->
+    void query_tenantConditionalPermission_returnsDenied() {
+        PermissionSpiceDBQuery query = queryWith(req ->
                 responseForRequest(req, CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION,
-                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION), TEST_CONSISTENCY);
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION));
 
         EntitlementsResult result = query.query(
                 new UserSubjectContext("user-1", "tenant-1"),
@@ -98,10 +99,10 @@ class PermissionSpiceDBQueryTest {
     }
 
     @Test
-    void query_singlePermission_bothDenied_returnsDenied() {
-        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req ->
+    void query_bothDenied_returnsDenied() {
+        PermissionSpiceDBQuery query = queryWith(req ->
                 responseForRequest(req, CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION,
-                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION), TEST_CONSISTENCY);
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION));
 
         EntitlementsResult result = query.query(
                 new UserSubjectContext("user-1", "tenant-1"),
@@ -111,80 +112,17 @@ class PermissionSpiceDBQueryTest {
     }
 
     // -------------------------------------------------------------------------
-    // Multiple permissions — AND logic
-    // -------------------------------------------------------------------------
-
-    @Test
-    void query_multiplePermissions_allEntitled_returnsAllowed() {
-        // Both permissions: user is entitled (tenant denied)
-        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req ->
-                responseForRequest(req, CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
-                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION), TEST_CONSISTENCY);
-
-        EntitlementsResult result = query.query(
-                new UserSubjectContext("user-1", "tenant-1"),
-                new PermissionRequestContext(List.of("reports:read", "reports:export")));
-
-        assertTrue(result.result(), "all permissions entitled → result must be true");
-    }
-
-    @Test
-    void query_multiplePermissions_oneKeyDenied_returnsDenied() {
-        // First permission: both user and tenant denied
-        // Second permission: user is entitled
-        // Expected: denied (AND logic — all must be entitled)
-        PermissionSpiceDBQuery denyFirstQuery = new PermissionSpiceDBQuery(req -> {
-            CheckBulkPermissionsResponse.Builder responseBuilder = CheckBulkPermissionsResponse.newBuilder();
-            List<CheckBulkPermissionsRequestItem> items = req.getItemsList();
-            // Items are: [user→perm1, tenant→perm1, user→perm2, tenant→perm2]
-            // Deny both items for perm1 (indices 0,1), allow user item for perm2 (index 2)
-            for (int i = 0; i < items.size(); i++) {
-                CheckPermissionResponse.Permissionship p = (i < 2)
-                        ? CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION
-                        : CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION;
-                responseBuilder.addPairs(pairWithRequest(items.get(i), p));
-            }
-            return responseBuilder.build();
-        }, TEST_CONSISTENCY);
-
-        EntitlementsResult result = denyFirstQuery.query(
-                new UserSubjectContext("user-1", "tenant-1"),
-                new PermissionRequestContext(List.of("reports:read", "reports:export")));
-
-        assertFalse(result.result(), "one key denied → result must be false (AND logic)");
-    }
-
-    // -------------------------------------------------------------------------
     // Request construction — 2 items per permission key
     // -------------------------------------------------------------------------
-
-    @Test
-    void query_twoPermissionKeys_requestHasFourItems() {
-        AtomicReference<CheckBulkPermissionsRequest> captured = new AtomicReference<>();
-
-        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
-            captured.set(req);
-            return emptyResponse();
-        }, TEST_CONSISTENCY);
-
-        query.query(
-                new UserSubjectContext("user-abc", "tenant-xyz"),
-                new PermissionRequestContext(List.of("perm:one", "perm:two")));
-
-        CheckBulkPermissionsRequest request = captured.get();
-        assertNotNull(request, "request must have been captured");
-        assertEquals(4, request.getItemsCount(),
-                "2 permission keys × 2 subject types = 4 items");
-    }
 
     @Test
     void query_requestConstruction_correctResourceTypeAndRelation() {
         AtomicReference<CheckBulkPermissionsRequest> captured = new AtomicReference<>();
 
-        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
+        PermissionSpiceDBQuery query = queryWith(req -> {
             captured.set(req);
             return emptyResponse();
-        }, TEST_CONSISTENCY);
+        });
 
         query.query(
                 new UserSubjectContext("user-abc", "tenant-xyz"),
@@ -218,10 +156,10 @@ class PermissionSpiceDBQueryTest {
     void query_withAttributes_caveatContextAttached() {
         List<CheckBulkPermissionsRequest> requests = new ArrayList<>();
 
-        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
+        PermissionSpiceDBQuery query = queryWith(req -> {
             requests.add(req);
             return emptyResponse();
-        }, TEST_CONSISTENCY);
+        });
 
         query.query(
                 new UserSubjectContext("user-1", "tenant-1",
@@ -242,10 +180,10 @@ class PermissionSpiceDBQueryTest {
     void query_withoutAttributes_caveatContextNotAttached() {
         List<CheckBulkPermissionsRequest> requests = new ArrayList<>();
 
-        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
+        PermissionSpiceDBQuery query = queryWith(req -> {
             requests.add(req);
             return emptyResponse();
-        }, TEST_CONSISTENCY);
+        });
 
         query.query(
                 new UserSubjectContext("user-1", "tenant-1", Map.of()),
@@ -259,8 +197,225 @@ class PermissionSpiceDBQueryTest {
     }
 
     // -------------------------------------------------------------------------
+    // Client-side permission cache (Step 1)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void query_withPermissionsCache_exactMatch_proceedsToSpiceDB() {
+        AtomicReference<Boolean> bulkCalled = new AtomicReference<>(false);
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
+            bulkCalled.set(true);
+            return responseForRequest(req,
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
+        }, hasFeatures(), TEST_CONSISTENCY);
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1", List.of("reports:read"), Map.of()),
+                new PermissionRequestContext("reports:read"));
+
+        assertTrue(result.result(), "exact match in cache + SpiceDB allows → result must be true");
+        assertTrue(bulkCalled.get(), "bulk check must be called when permission passes cache");
+    }
+
+    @Test
+    void query_withPermissionsCache_wildcardMatch_proceedsToSpiceDB() {
+        AtomicReference<Boolean> bulkCalled = new AtomicReference<>(false);
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
+            bulkCalled.set(true);
+            return responseForRequest(req,
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
+        }, hasFeatures(), TEST_CONSISTENCY);
+
+        // "reports:*" matches "reports:read" — colon is not special, wildcard covers the suffix
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1", List.of("reports:*"), Map.of()),
+                new PermissionRequestContext("reports:read"));
+
+        assertTrue(result.result(), "wildcard match in cache → should proceed to SpiceDB and be allowed");
+        assertTrue(bulkCalled.get(), "bulk check must be called when permission passes wildcard cache");
+    }
+
+    @Test
+    void query_withPermissionsCache_noMatch_returnsDeniedWithoutSpiceDB() {
+        AtomicReference<Boolean> bulkCalled = new AtomicReference<>(false);
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
+            bulkCalled.set(true);
+            return emptyResponse();
+        }, hasFeatures(), TEST_CONSISTENCY);
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1", List.of("billing.*"), Map.of()),
+                new PermissionRequestContext("reports:read"));
+
+        assertFalse(result.result(), "no cache match → result must be denied");
+        assertFalse(bulkCalled.get(), "SpiceDB must NOT be called when permission fails cache check");
+    }
+
+    @Test
+    void query_emptyPermissionsCache_skipsCacheAndProceedsToSpiceDB() {
+        AtomicReference<Boolean> bulkCalled = new AtomicReference<>(false);
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
+            bulkCalled.set(true);
+            return responseForRequest(req,
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
+        }, hasFeatures(), TEST_CONSISTENCY);
+
+        // No permissions list → cache check skipped
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new PermissionRequestContext("reports:read"));
+
+        assertTrue(result.result(), "no cache → falls through to SpiceDB which allows");
+        assertTrue(bulkCalled.get(), "bulk check must be called when no permissions cache is set");
+    }
+
+    @Test
+    void query_emptyPermissionsInContext_skipsCacheAndProceedsToFeatureLinking() {
+        AtomicReference<Boolean> bulkCalled = new AtomicReference<>(false);
+
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
+            bulkCalled.set(true);
+            return responseForRequest(req,
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
+        }, hasFeatures(), TEST_CONSISTENCY);
+
+        // Empty list of permissions (not null, but empty)
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1", List.of(), Map.of()),
+                new PermissionRequestContext("reports:read"));
+
+        assertTrue(result.result(), "empty permissions list skips cache and falls through");
+        assertTrue(bulkCalled.get(), "CheckBulkPermissions must be called after feature-linking");
+    }
+
+    // -------------------------------------------------------------------------
+    // Feature-linking check (Step 2)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void query_notLinkedToFeature_returnsAllowedWithoutCheckBulk() {
+        AtomicReference<Boolean> bulkCalled = new AtomicReference<>(false);
+        // Lookup returns empty → not linked to any feature
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
+            bulkCalled.set(true);
+            return emptyResponse();
+        }, noFeatures(), TEST_CONSISTENCY);
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new PermissionRequestContext("reports:read"));
+
+        assertTrue(result.result(), "not linked to feature → should be allowed immediately");
+        assertFalse(bulkCalled.get(), "CheckBulkPermissions must NOT be called when not linked to feature");
+    }
+
+    @Test
+    void query_linkedToFeature_proceedsToCheckBulk() {
+        AtomicReference<Boolean> bulkCalled = new AtomicReference<>(false);
+        // Lookup returns one result → linked to a feature
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
+            bulkCalled.set(true);
+            return responseForRequest(req,
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
+        }, hasFeatures(), TEST_CONSISTENCY);
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new PermissionRequestContext("reports:read"));
+
+        assertTrue(result.result(), "linked to feature + SpiceDB allows → result must be true");
+        assertTrue(bulkCalled.get(), "CheckBulkPermissions must be called when linked to feature");
+    }
+
+    // -------------------------------------------------------------------------
+    // Feature-link cache — only true is cached; false is never cached
+    // -------------------------------------------------------------------------
+
+    @Test
+    void query_featureLinkCachedTrue_doesNotCallLookupAgain() {
+        AtomicReference<Integer> lookupCallCount = new AtomicReference<>(0);
+        LookupSubjectsExecutor countingLookup = req -> {
+            lookupCallCount.updateAndGet(c -> c + 1);
+            // Always return linked (true)
+            return List.of(com.authzed.api.v1.LookupSubjectsResponse.newBuilder().build()).iterator();
+        };
+
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(
+                req -> responseForRequest(req,
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION),
+                countingLookup,
+                TEST_CONSISTENCY);
+
+        // First call — should call LookupSubjects once, cache the "true" result.
+        query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new PermissionRequestContext("reports:read"));
+        assertEquals(1, lookupCallCount.get(), "LookupSubjects must be called on the first request");
+
+        // Second call with the same permission key — should use cache; LookupSubjects not called again.
+        query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new PermissionRequestContext("reports:read"));
+        assertEquals(1, lookupCallCount.get(),
+                "LookupSubjects must NOT be called again when cached true is still valid");
+    }
+
+    @Test
+    void query_featureLinkCacheExpired_rechecksSpiceDB() throws Exception {
+        AtomicReference<Integer> lookupCallCount = new AtomicReference<>(0);
+        LookupSubjectsExecutor countingLookup = req -> {
+            lookupCallCount.updateAndGet(c -> c + 1);
+            return List.of(com.authzed.api.v1.LookupSubjectsResponse.newBuilder().build()).iterator();
+        };
+
+        // Use a very short TTL so we can expire the cache quickly in a test.
+        long shortTtlMs = 50L;
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(
+                req -> responseForRequest(req,
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION),
+                countingLookup,
+                TEST_CONSISTENCY,
+                shortTtlMs);
+
+        // First call — populates cache.
+        query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new PermissionRequestContext("reports:read"));
+        assertEquals(1, lookupCallCount.get(), "LookupSubjects must be called on first request");
+
+        // Wait for the cache entry to expire.
+        Thread.sleep(shortTtlMs + 20);
+
+        // Second call after expiry — must re-check SpiceDB.
+        query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new PermissionRequestContext("reports:read"));
+        assertEquals(2, lookupCallCount.get(),
+                "LookupSubjects must be called again after cache TTL expires");
+    }
+
+    // -------------------------------------------------------------------------
     // Helper factory methods
     // -------------------------------------------------------------------------
+
+    /** Lookup stub that simulates permission IS linked to a feature. */
+    private static LookupSubjectsExecutor hasFeatures() {
+        return req -> List.of(
+                com.authzed.api.v1.LookupSubjectsResponse.newBuilder().build()
+        ).iterator();
+    }
+
+    /** Lookup stub that simulates permission is NOT linked to any feature. */
+    private static LookupSubjectsExecutor noFeatures() {
+        return req -> Collections.emptyIterator();
+    }
 
     /**
      * Builds a response that mirrors the items from the request, assigning permissionships
@@ -294,6 +449,19 @@ class PermissionSpiceDBQueryTest {
 
     private static CheckBulkPermissionsResponse emptyResponse() {
         return CheckBulkPermissionsResponse.newBuilder().build();
+    }
+
+    /**
+     * Builds a {@link PermissionSpiceDBQuery} with the given bulk executor and a
+     * features-linked lookup stub (simulates the case where the permission IS linked to
+     * a feature, so the full CheckBulkPermissions path is always exercised).
+     */
+    private static PermissionSpiceDBQuery queryWith(BulkPermissionsExecutor bulkExecutor) {
+        // Non-empty iterator → features linked → proceeds to CheckBulkPermissions
+        LookupSubjectsExecutor hasFeatures = req -> List.of(
+                com.authzed.api.v1.LookupSubjectsResponse.newBuilder().build()
+        ).iterator();
+        return new PermissionSpiceDBQuery(bulkExecutor, hasFeatures, TEST_CONSISTENCY);
     }
 
     private static String base64(String value) {

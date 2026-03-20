@@ -2,6 +2,7 @@ package com.frontegg.sdk.entitlements.internal;
 
 import com.authzed.api.v1.Consistency;
 import com.authzed.api.v1.PermissionsServiceGrpc;
+import com.authzed.api.v1.ReadRelationshipsResponse;
 import com.frontegg.sdk.entitlements.config.ClientConfiguration;
 import com.frontegg.sdk.entitlements.model.EntitlementsResult;
 import com.frontegg.sdk.entitlements.model.EntityRequestContext;
@@ -19,6 +20,9 @@ import io.grpc.Deadline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -70,12 +74,22 @@ class SpiceDBQueryClient {
                         config.getBulkRequestTimeout().toMillis(), TimeUnit.MILLISECONDS))
                 .lookupSubjects(request);
 
+        ReadRelationshipsExecutor readRelationshipsExec = request -> {
+            Iterator<ReadRelationshipsResponse> it = stub
+                    .withDeadline(Deadline.after(
+                            config.getBulkRequestTimeout().toMillis(), TimeUnit.MILLISECONDS))
+                    .readRelationships(request);
+            List<ReadRelationshipsResponse> results = new ArrayList<>();
+            while (it.hasNext()) results.add(it.next());
+            return results;
+        };
+
         Supplier<Consistency> consistency = ConsistencyFactory.supplierFor(config.getConsistencyPolicy());
 
         this.featureQuery = new FeatureSpiceDBQuery(bulkExecutor, consistency);
-        this.permissionQuery = new PermissionSpiceDBQuery(bulkExecutor, consistency);
+        this.permissionQuery = new PermissionSpiceDBQuery(bulkExecutor, lookupSubjectsExec, consistency);
         this.fgaQuery = new FgaSpiceDBQuery(checkExecutor, consistency);
-        this.routeQuery = new RouteSpiceDBQuery(bulkExecutor, consistency);
+        this.routeQuery = new RouteSpiceDBQuery(readRelationshipsExec, bulkExecutor, consistency);
         this.lookupQuery = new LookupSpiceDBQuery(lookupResourcesExec, lookupSubjectsExec, consistency);
     }
 
@@ -95,7 +109,8 @@ class SpiceDBQueryClient {
         this.lookupQuery = new LookupSpiceDBQuery(
                 req -> { throw new UnsupportedOperationException("lookup not wired in test constructor"); },
                 req -> { throw new UnsupportedOperationException("lookup not wired in test constructor"); },
-                ConsistencyFactory.supplierFor(com.frontegg.sdk.entitlements.config.ConsistencyPolicy.MINIMIZE_LATENCY));
+                ConsistencyFactory.supplierFor(com.frontegg.sdk.entitlements.config.ConsistencyPolicy.MINIMIZE_LATENCY)
+        );
     }
 
     /**

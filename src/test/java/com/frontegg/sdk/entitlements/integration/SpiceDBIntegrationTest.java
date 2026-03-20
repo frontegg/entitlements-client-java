@@ -25,7 +25,6 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -152,27 +151,6 @@ class SpiceDBIntegrationTest {
                 new UserSubjectContext("user-1", "tenant-1"),
                 new PermissionRequestContext("admin:write"));
         assertFalse(result.result(), "user-1 has no relationship for 'admin:write' — should be denied");
-    }
-
-    @Test
-    @Order(12)
-    void permissionCheck_multiplePermissions_allEntitled_returnsAllowed() {
-        // user-1 has reports:read (which should cover the single-key case)
-        EntitlementsResult result = client.isEntitledTo(
-                new UserSubjectContext("user-1", "tenant-1"),
-                new PermissionRequestContext(List.of("reports:read")));
-        assertTrue(result.result());
-    }
-
-    @Test
-    @Order(13)
-    void permissionCheck_multiplePermissions_oneNotEntitled_returnsDenied() {
-        // AND logic: user-1 has reports:read but NOT admin:write — must be denied
-        EntitlementsResult result = client.isEntitledTo(
-                new UserSubjectContext("user-1", "tenant-1"),
-                new PermissionRequestContext(List.of("reports:read", "admin:write")));
-        assertFalse(result.result(),
-                "permission check is AND logic — missing admin:write should cause denial");
     }
 
     // -------------------------------------------------------------------------
