@@ -146,11 +146,13 @@ class SpiceDBIntegrationTest {
 
     @Test
     @Order(11)
-    void permissionCheck_singlePermission_notEntitled_returnsDenied() {
+    void permissionCheck_singlePermission_notLinkedToFeature_returnsAllowed() {
+        // 'admin:write' has no parent feature link in SpiceDB — self-sufficient permission
+        // → SDK short-circuits to allowed without a CheckBulkPermissions call (JS SDK parity)
         EntitlementsResult result = client.isEntitledTo(
                 new UserSubjectContext("user-1", "tenant-1"),
                 new PermissionRequestContext("admin:write"));
-        assertFalse(result.result(), "user-1 has no relationship for 'admin:write' — should be denied");
+        assertTrue(result.result(), "permission not linked to any feature should be self-sufficient → allowed");
     }
 
     // -------------------------------------------------------------------------

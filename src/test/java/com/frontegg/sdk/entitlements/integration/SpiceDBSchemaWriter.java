@@ -59,14 +59,22 @@ public class SpiceDBSchemaWriter {
 
                 definition frontegg_feature {
                     relation entitled: frontegg_user | frontegg_tenant
+                    permission access = entitled
                 }
 
                 definition frontegg_permission {
                     relation entitled: frontegg_user | frontegg_tenant
+                    relation parent: frontegg_feature
+                    permission access = entitled
+                }
+
+                caveat route_policy(pattern string, policy_type string, priority double, monitoring bool) {
+                    pattern != "" && policy_type != "" && priority >= 0.0 && (monitoring || !monitoring)
                 }
 
                 definition frontegg_route {
-                    relation entitled: frontegg_user | frontegg_tenant
+                    relation entitled: frontegg_user with route_policy | frontegg_tenant with route_policy
+                    permission access = entitled
                 }
 
                 definition document {
@@ -120,10 +128,12 @@ public class SpiceDBSchemaWriter {
                         "frontegg_user", encode("user-1")))
                 .addUpdates(buildUpdate("frontegg_permission", encode("reports:read"), "entitled",
                         "frontegg_tenant", encode("tenant-1")))
-                // Route "GET:/api/v1/reports": user-1 entitled (user-level only)
-                // RouteSpiceDBQuery formats the key as METHOD:PATH before encoding
-                .addUpdates(buildUpdate("frontegg_route", encode("GET:/api/v1/reports"), "entitled",
-                        "frontegg_user", encode("user-1")))
+                // Route "GET:/api/v1/reports": ruleBased policy matching GET /api/v1/reports
+                // RouteSpiceDBQuery reads all frontegg_route relationships and matches on caveat context fields.
+                // The resource ID is arbitrary (used for the bulk permission check); the pattern drives matching.
+                .addUpdates(buildRouteUpdate("frontegg_route", encode("GET:/api/v1/reports"), "entitled",
+                        "frontegg_user", encode("user-1"),
+                        "GET /api/v1/reports", "allow", 0.0, false))
                 // FGA: user-1 is viewer of doc-1, editor of doc-2
                 .addUpdates(buildUpdate("document", encode("doc-1"), "viewer",
                         "frontegg_user", encode("user-1")))
@@ -195,6 +205,39 @@ public class SpiceDBSchemaWriter {
                                         .setObjectType(subjectType)
                                         .setObjectId(subjectId)
                                         .build())
+                                .build())
+                        .build())
+                .build();
+    }
+
+    private static RelationshipUpdate buildRouteUpdate(String resourceType, String resourceId,
+                                                        String relation,
+                                                        String subjectType, String subjectId,
+                                                        String pattern, String policyType,
+                                                        double priority, boolean monitoring) {
+        Struct context = Struct.newBuilder()
+                .putFields("pattern", Value.newBuilder().setStringValue(pattern).build())
+                .putFields("policy_type", Value.newBuilder().setStringValue(policyType).build())
+                .putFields("priority", Value.newBuilder().setNumberValue(priority).build())
+                .putFields("monitoring", Value.newBuilder().setBoolValue(monitoring).build())
+                .build();
+        return RelationshipUpdate.newBuilder()
+                .setOperation(RelationshipUpdate.Operation.OPERATION_TOUCH)
+                .setRelationship(Relationship.newBuilder()
+                        .setResource(ObjectReference.newBuilder()
+                                .setObjectType(resourceType)
+                                .setObjectId(resourceId)
+                                .build())
+                        .setRelation(relation)
+                        .setSubject(SubjectReference.newBuilder()
+                                .setObject(ObjectReference.newBuilder()
+                                        .setObjectType(subjectType)
+                                        .setObjectId(subjectId)
+                                        .build())
+                                .build())
+                        .setOptionalCaveat(ContextualizedCaveat.newBuilder()
+                                .setCaveatName("route_policy")
+                                .setContext(context)
                                 .build())
                         .build())
                 .build();
