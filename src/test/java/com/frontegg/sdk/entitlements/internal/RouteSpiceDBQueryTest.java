@@ -501,14 +501,14 @@ class RouteSpiceDBQueryTest {
         assertEquals(base64("user-abc"), userItem.getSubject().getObject().getObjectId());
         assertEquals("frontegg_route", userItem.getResource().getObjectType());
         assertEquals(expectedRouteB64, userItem.getResource().getObjectId());
-        assertEquals("entitled", userItem.getPermission());
+        assertEquals("access", userItem.getPermission());
 
         CheckBulkPermissionsRequestItem tenantItem = request.getItems(1);
         assertEquals("frontegg_tenant", tenantItem.getSubject().getObject().getObjectType());
         assertEquals(base64("tenant-xyz"), tenantItem.getSubject().getObject().getObjectId());
         assertEquals("frontegg_route", tenantItem.getResource().getObjectType());
         assertEquals(expectedRouteB64, tenantItem.getResource().getObjectId());
-        assertEquals("entitled", tenantItem.getPermission());
+        assertEquals("access", tenantItem.getPermission());
     }
 
     // -------------------------------------------------------------------------
@@ -733,7 +733,7 @@ class RouteSpiceDBQueryTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void query_missingPolicyType_returnsDenied() {
+    void query_missingPolicyType_returnsAllowed() {
         // Build a route relationship with no "policy_type" field in the caveat context.
         Struct.Builder ctx = Struct.newBuilder()
                 .putFields("pattern",    Value.newBuilder().setStringValue("GET /api/.*").build())
@@ -774,8 +774,8 @@ class RouteSpiceDBQueryTest {
                 new UserSubjectContext("user-1", "tenant-1"),
                 new RouteRequestContext("GET", "/api/v1/reports"));
 
-        assertFalse(result.result(),
-                "missing policy_type must default to 'deny' (fail-closed / principle of least privilege)");
+        assertTrue(result.result(),
+                "missing policy_type must default to 'allow' (aligned with JS SDK behaviour)");
     }
 
     // -------------------------------------------------------------------------

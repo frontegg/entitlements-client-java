@@ -52,7 +52,7 @@ class PermissionSpiceDBQuery {
 
     private static final Logger log = LoggerFactory.getLogger(PermissionSpiceDBQuery.class);
 
-    private static final String RELATION_ENTITLED = "entitled";
+    private static final String RELATION_ENTITLED = "access";
     private static final String TYPE_USER = "frontegg_user";
     private static final String TYPE_TENANT = "frontegg_tenant";
     private static final String TYPE_PERMISSION = "frontegg_permission";

@@ -138,14 +138,14 @@ class PermissionSpiceDBQueryTest {
         assertEquals("frontegg_permission", userItem.getResource().getObjectType(),
                 "resource type must be frontegg_permission, not frontegg_feature");
         assertEquals(base64("my-permission"), userItem.getResource().getObjectId());
-        assertEquals("entitled", userItem.getPermission());
+        assertEquals("access", userItem.getPermission());
 
         CheckBulkPermissionsRequestItem tenantItem = request.getItems(1);
         assertEquals("frontegg_tenant", tenantItem.getSubject().getObject().getObjectType());
         assertEquals(base64("tenant-xyz"), tenantItem.getSubject().getObject().getObjectId());
         assertEquals("frontegg_permission", tenantItem.getResource().getObjectType());
         assertEquals(base64("my-permission"), tenantItem.getResource().getObjectId());
-        assertEquals("entitled", tenantItem.getPermission());
+        assertEquals("access", tenantItem.getPermission());
     }
 
     // -------------------------------------------------------------------------

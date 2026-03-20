@@ -55,7 +55,7 @@ class RouteSpiceDBQuery {
 
     private static final Logger log = LoggerFactory.getLogger(RouteSpiceDBQuery.class);
 
-    private static final String RELATION_ENTITLED = "entitled";
+    private static final String RELATION_ENTITLED = "access";
     private static final String TYPE_USER = "frontegg_user";
     private static final String TYPE_TENANT = "frontegg_tenant";
     private static final String TYPE_ROUTE = "frontegg_route";
@@ -143,7 +143,7 @@ class RouteSpiceDBQuery {
         boolean monitoring = getBoolField(matched.get(0).relationship(), "monitoring", false);
 
         // 7/8/9. Evaluate policy_type of the first rule
-        String policyType = getStringField(matched.get(0).relationship(), "policy_type", "deny");
+        String policyType = getStringField(matched.get(0).relationship(), "policy_type", "allow");
 
         switch (policyType) {
             case "allow":
