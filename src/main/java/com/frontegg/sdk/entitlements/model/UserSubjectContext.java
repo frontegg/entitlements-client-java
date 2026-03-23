@@ -43,7 +43,9 @@ import java.util.Objects;
  * SubjectContext subject = new UserSubjectContext("user-123", "tenant-456");
  * }</pre>
  *
- * @param userId      the unique identifier of the user; must not be null or blank
+ * @param userId      the unique identifier of the user; may be {@code null} or blank — when
+ *                    absent the user-subject item is omitted from SpiceDB checks (tenant-only
+ *                    evaluation, matching JS SDK behaviour)
  * @param tenantId    the unique identifier of the tenant the user belongs to; must not be null
  *                    or blank
  * @param permissions optional list of permission key patterns the user holds; {@code null} or
@@ -63,17 +65,12 @@ public record UserSubjectContext(
      * Compact canonical constructor — validates required fields and makes defensive
      * unmodifiable copies of the {@code permissions} list and {@code attributes} map.
      *
-     * @throws NullPointerException     if {@code userId}, {@code tenantId}, or
-     *                                  {@code attributes} is {@code null}
-     * @throws IllegalArgumentException if {@code userId} or {@code tenantId} is blank
+     * @throws NullPointerException     if {@code tenantId} or {@code attributes} is {@code null}
+     * @throws IllegalArgumentException if {@code tenantId} is blank
      */
     public UserSubjectContext {
-        Objects.requireNonNull(userId, "userId must not be null");
         Objects.requireNonNull(tenantId, "tenantId must not be null");
         Objects.requireNonNull(attributes, "attributes must not be null");
-        if (userId.isBlank()) {
-            throw new IllegalArgumentException("userId must not be blank");
-        }
         if (tenantId.isBlank()) {
             throw new IllegalArgumentException("tenantId must not be blank");
         }
@@ -86,7 +83,7 @@ public record UserSubjectContext(
      * Convenience constructor for the common case where no permissions cache or attributes
      * are needed.
      *
-     * @param userId   the unique identifier of the user; must not be null or blank
+     * @param userId   the unique identifier of the user; may be {@code null} or blank
      * @param tenantId the unique identifier of the tenant; must not be null or blank
      */
     public UserSubjectContext(String userId, String tenantId) {
@@ -96,7 +93,7 @@ public record UserSubjectContext(
     /**
      * Convenience constructor for supplying attributes without a permissions cache.
      *
-     * @param userId     the unique identifier of the user; must not be null or blank
+     * @param userId     the unique identifier of the user; may be {@code null} or blank
      * @param tenantId   the unique identifier of the tenant; must not be null or blank
      * @param attributes arbitrary caveat attributes; must not be null
      */

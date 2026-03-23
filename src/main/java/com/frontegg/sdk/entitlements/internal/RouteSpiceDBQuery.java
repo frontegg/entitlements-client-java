@@ -208,7 +208,8 @@ class RouteSpiceDBQuery {
             boolean monitoring) {
 
         String routeKey = routeCtx.method().toUpperCase() + ":" + routeCtx.path();
-        String b64UserId = Base64Utils.encode(userCtx.userId());
+        String b64UserId = userCtx.userId() != null && !userCtx.userId().isBlank()
+                ? Base64Utils.encode(userCtx.userId()) : null;
         String b64TenantId = Base64Utils.encode(userCtx.tenantId());
         String b64RouteKey = Base64Utils.encode(routeKey);
 
@@ -219,16 +220,18 @@ class RouteSpiceDBQuery {
 
         Struct caveatContext = CaveatContextBuilder.build(userCtx.attributes(), null);
 
-        CheckBulkPermissionsRequestItem userItem = buildItem(
-                TYPE_USER, b64UserId, routeResource, caveatContext);
         CheckBulkPermissionsRequestItem tenantItem = buildItem(
                 TYPE_TENANT, b64TenantId, routeResource, caveatContext);
 
-        CheckBulkPermissionsRequest request = CheckBulkPermissionsRequest.newBuilder()
+        CheckBulkPermissionsRequest.Builder requestBuilder = CheckBulkPermissionsRequest.newBuilder()
                 .setConsistency(consistencySupplier.get())
-                .addItems(userItem)
-                .addItems(tenantItem)
-                .build();
+                .addItems(tenantItem);
+
+        if (b64UserId != null) {
+            requestBuilder.addItems(buildItem(TYPE_USER, b64UserId, routeResource, caveatContext));
+        }
+
+        CheckBulkPermissionsRequest request = requestBuilder.build();
 
         CheckBulkPermissionsResponse response = bulkExecutor.execute(request);
 

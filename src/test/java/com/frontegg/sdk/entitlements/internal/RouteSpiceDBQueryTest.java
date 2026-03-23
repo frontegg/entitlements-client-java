@@ -496,19 +496,107 @@ class RouteSpiceDBQueryTest {
 
         String expectedRouteB64 = base64("GET:/api/v1/reports");
 
-        CheckBulkPermissionsRequestItem userItem = request.getItems(0);
-        assertEquals("frontegg_user", userItem.getSubject().getObject().getObjectType());
-        assertEquals(base64("user-abc"), userItem.getSubject().getObject().getObjectId());
-        assertEquals("frontegg_route", userItem.getResource().getObjectType());
-        assertEquals(expectedRouteB64, userItem.getResource().getObjectId());
-        assertEquals("access", userItem.getPermission());
-
-        CheckBulkPermissionsRequestItem tenantItem = request.getItems(1);
+        // tenant item is always first (index 0); user item is second (index 1) when userId present
+        CheckBulkPermissionsRequestItem tenantItem = request.getItems(0);
         assertEquals("frontegg_tenant", tenantItem.getSubject().getObject().getObjectType());
         assertEquals(base64("tenant-xyz"), tenantItem.getSubject().getObject().getObjectId());
         assertEquals("frontegg_route", tenantItem.getResource().getObjectType());
         assertEquals(expectedRouteB64, tenantItem.getResource().getObjectId());
         assertEquals("access", tenantItem.getPermission());
+
+        CheckBulkPermissionsRequestItem userItem = request.getItems(1);
+        assertEquals("frontegg_user", userItem.getSubject().getObject().getObjectType());
+        assertEquals(base64("user-abc"), userItem.getSubject().getObject().getObjectId());
+        assertEquals("frontegg_route", userItem.getResource().getObjectType());
+        assertEquals(expectedRouteB64, userItem.getResource().getObjectId());
+        assertEquals("access", userItem.getPermission());
+    }
+
+    @Test
+    void query_nullUserId_onlyTenantItemSent() {
+        AtomicReference<CheckBulkPermissionsRequest> captured = new AtomicReference<>();
+
+        List<ReadRelationshipsResponse> routes = List.of(
+                routeRelationship("entitled", "id", "GET /api/.*", "ruleBased", 0.0, false));
+
+        RouteSpiceDBQuery query = new RouteSpiceDBQuery(
+                req -> routes,
+                req -> {
+                    captured.set(req);
+                    return emptyBulkResponse();
+                },
+                TEST_CONSISTENCY);
+
+        query.query(
+                new UserSubjectContext(null, "tenant-xyz"),
+                new RouteRequestContext("GET", "/api/v1/reports"));
+
+        CheckBulkPermissionsRequest request = captured.get();
+        assertNotNull(request);
+        assertEquals(1, request.getItemsCount(), "only tenant item must be sent when userId is null");
+        assertEquals("frontegg_tenant", request.getItems(0).getSubject().getObject().getObjectType());
+        assertEquals(base64("tenant-xyz"), request.getItems(0).getSubject().getObject().getObjectId());
+    }
+
+    @Test
+    void query_blankUserId_onlyTenantItemSent() {
+        AtomicReference<CheckBulkPermissionsRequest> captured = new AtomicReference<>();
+
+        List<ReadRelationshipsResponse> routes = List.of(
+                routeRelationship("entitled", "id", "GET /api/.*", "ruleBased", 0.0, false));
+
+        RouteSpiceDBQuery query = new RouteSpiceDBQuery(
+                req -> routes,
+                req -> {
+                    captured.set(req);
+                    return emptyBulkResponse();
+                },
+                TEST_CONSISTENCY);
+
+        query.query(
+                new UserSubjectContext("   ", "tenant-xyz"),
+                new RouteRequestContext("GET", "/api/v1/reports"));
+
+        CheckBulkPermissionsRequest request = captured.get();
+        assertNotNull(request);
+        assertEquals(1, request.getItemsCount(), "only tenant item must be sent when userId is blank");
+        assertEquals("frontegg_tenant", request.getItems(0).getSubject().getObject().getObjectType());
+    }
+
+    @Test
+    void query_nullUserId_tenantEntitled_returnsAllowed() {
+        List<ReadRelationshipsResponse> routes = List.of(
+                routeRelationship("entitled", "id", "GET /api/.*", "ruleBased", 0.0, false));
+
+        RouteSpiceDBQuery query = new RouteSpiceDBQuery(
+                req -> routes,
+                req -> responseWith(
+                        permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION)),
+                TEST_CONSISTENCY);
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext(null, "tenant-1"),
+                new RouteRequestContext("GET", "/api/v1/reports"));
+
+        assertTrue(result.result(), "tenant entitled with null userId → result must be true");
+    }
+
+    @Test
+    void query_nullUserId_tenantDenied_returnsDenied() {
+        List<ReadRelationshipsResponse> routes = List.of(
+                routeRelationship("entitled", "id", "GET /api/.*", "ruleBased", 0.0, false));
+
+        RouteSpiceDBQuery query = new RouteSpiceDBQuery(
+                req -> routes,
+                req -> responseWith(
+                        permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION)),
+                TEST_CONSISTENCY);
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext(null, "tenant-1"),
+                new RouteRequestContext("GET", "/api/v1/reports"));
+
+        assertFalse(result.result(), "tenant denied with null userId → result must be false");
     }
 
     // -------------------------------------------------------------------------

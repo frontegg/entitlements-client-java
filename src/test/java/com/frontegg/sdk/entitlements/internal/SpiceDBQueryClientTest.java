@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -73,7 +74,7 @@ class SpiceDBQueryClientTest {
 
         queryClient = new SpiceDBQueryClient(capturedFeatureQuery, capturedPermissionQuery,
                 capturedFgaQuery, capturedRouteQuery);
-        userCtx = new UserSubjectContext("user-1", "tenant-1");
+        userCtx = new UserSubjectContext("user-1", "tenant-1", List.of("read:data"), Map.of());
         entityCtx = new EntitySubjectContext("service_account", "svc-deployer-01");
     }
 

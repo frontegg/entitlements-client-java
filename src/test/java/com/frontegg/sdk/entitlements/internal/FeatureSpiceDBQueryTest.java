@@ -129,19 +129,88 @@ class FeatureSpiceDBQueryTest {
         assertNotNull(request, "request must have been captured");
         assertEquals(2, request.getItemsCount(), "must send exactly 2 items");
 
-        CheckBulkPermissionsRequestItem userItem = request.getItems(0);
-        assertEquals("frontegg_user", userItem.getSubject().getObject().getObjectType());
-        assertEquals(base64("user-abc"), userItem.getSubject().getObject().getObjectId());
-        assertEquals("frontegg_feature", userItem.getResource().getObjectType());
-        assertEquals(base64("my-feature"), userItem.getResource().getObjectId());
-        assertEquals("access", userItem.getPermission());
-
-        CheckBulkPermissionsRequestItem tenantItem = request.getItems(1);
+        // tenant item is always first (index 0); user item is second (index 1) when userId present
+        CheckBulkPermissionsRequestItem tenantItem = request.getItems(0);
         assertEquals("frontegg_tenant", tenantItem.getSubject().getObject().getObjectType());
         assertEquals(base64("tenant-xyz"), tenantItem.getSubject().getObject().getObjectId());
         assertEquals("frontegg_feature", tenantItem.getResource().getObjectType());
         assertEquals(base64("my-feature"), tenantItem.getResource().getObjectId());
         assertEquals("access", tenantItem.getPermission());
+
+        CheckBulkPermissionsRequestItem userItem = request.getItems(1);
+        assertEquals("frontegg_user", userItem.getSubject().getObject().getObjectType());
+        assertEquals(base64("user-abc"), userItem.getSubject().getObject().getObjectId());
+        assertEquals("frontegg_feature", userItem.getResource().getObjectType());
+        assertEquals(base64("my-feature"), userItem.getResource().getObjectId());
+        assertEquals("access", userItem.getPermission());
+    }
+
+    @Test
+    void query_nullUserId_onlyTenantItemSent() {
+        AtomicReference<CheckBulkPermissionsRequest> captured = new AtomicReference<>();
+
+        FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(req -> {
+            captured.set(req);
+            return emptyResponse();
+        }, TEST_CONSISTENCY);
+
+        query.query(
+                new UserSubjectContext(null, "tenant-xyz"),
+                new FeatureRequestContext("my-feature"));
+
+        CheckBulkPermissionsRequest request = captured.get();
+        assertNotNull(request);
+        assertEquals(1, request.getItemsCount(), "only tenant item must be sent when userId is null");
+        assertEquals("frontegg_tenant", request.getItems(0).getSubject().getObject().getObjectType());
+        assertEquals(base64("tenant-xyz"), request.getItems(0).getSubject().getObject().getObjectId());
+    }
+
+    @Test
+    void query_blankUserId_onlyTenantItemSent() {
+        AtomicReference<CheckBulkPermissionsRequest> captured = new AtomicReference<>();
+
+        FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(req -> {
+            captured.set(req);
+            return emptyResponse();
+        }, TEST_CONSISTENCY);
+
+        query.query(
+                new UserSubjectContext("   ", "tenant-xyz"),
+                new FeatureRequestContext("my-feature"));
+
+        CheckBulkPermissionsRequest request = captured.get();
+        assertNotNull(request);
+        assertEquals(1, request.getItemsCount(), "only tenant item must be sent when userId is blank");
+        assertEquals("frontegg_tenant", request.getItems(0).getSubject().getObject().getObjectType());
+    }
+
+    @Test
+    void query_nullUserId_tenantEntitled_returnsAllowed() {
+        // When userId is null only the tenant item is sent; tenant entitled → result must be true.
+        FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(
+                req -> responseWith(
+                        permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION)),
+                TEST_CONSISTENCY);
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext(null, "tenant-1"),
+                new FeatureRequestContext("feature-key"));
+
+        assertTrue(result.result(), "tenant entitled with null userId → result must be true");
+    }
+
+    @Test
+    void query_nullUserId_tenantDenied_returnsDenied() {
+        FeatureSpiceDBQuery query = new FeatureSpiceDBQuery(
+                req -> responseWith(
+                        permissionship(CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION)),
+                TEST_CONSISTENCY);
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext(null, "tenant-1"),
+                new FeatureRequestContext("feature-key"));
+
+        assertFalse(result.result(), "tenant denied with null userId → result must be false");
     }
 
     // -------------------------------------------------------------------------

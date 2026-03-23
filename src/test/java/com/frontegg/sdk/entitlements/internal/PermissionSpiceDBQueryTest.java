@@ -41,6 +41,9 @@ class PermissionSpiceDBQueryTest {
     private static final Supplier<Consistency> TEST_CONSISTENCY =
             () -> Consistency.newBuilder().setMinimizeLatency(true).build();
 
+    /** Permission key used across tests that need to reach the SpiceDB call path. */
+    private static final String REPORTS_READ = "reports:read";
+
     // -------------------------------------------------------------------------
     // Permissionship outcome mapping
     // -------------------------------------------------------------------------
@@ -52,7 +55,7 @@ class PermissionSpiceDBQueryTest {
                         CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION));
 
         EntitlementsResult result = query.query(
-                new UserSubjectContext("user-1", "tenant-1"),
+                new UserSubjectContext("user-1", "tenant-1", List.of(REPORTS_READ), Map.of()),
                 new PermissionRequestContext("reports:read"));
 
         assertTrue(result.result(), "user entitled → result must be true");
@@ -66,7 +69,7 @@ class PermissionSpiceDBQueryTest {
                         CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION));
 
         EntitlementsResult result = query.query(
-                new UserSubjectContext("user-1", "tenant-1"),
+                new UserSubjectContext("user-1", "tenant-1", List.of(REPORTS_READ), Map.of()),
                 new PermissionRequestContext("reports:read"));
 
         assertTrue(result.result(), "tenant entitled → result must be true even if user denied");
@@ -79,7 +82,7 @@ class PermissionSpiceDBQueryTest {
                         CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION));
 
         EntitlementsResult result = query.query(
-                new UserSubjectContext("user-1", "tenant-1"),
+                new UserSubjectContext("user-1", "tenant-1", List.of(REPORTS_READ), Map.of()),
                 new PermissionRequestContext("reports:read"));
 
         assertFalse(result.result(), "conditional permission → result must be false (fail-closed)");
@@ -92,7 +95,7 @@ class PermissionSpiceDBQueryTest {
                         CheckPermissionResponse.Permissionship.PERMISSIONSHIP_CONDITIONAL_PERMISSION));
 
         EntitlementsResult result = query.query(
-                new UserSubjectContext("user-1", "tenant-1"),
+                new UserSubjectContext("user-1", "tenant-1", List.of(REPORTS_READ), Map.of()),
                 new PermissionRequestContext("reports:read"));
 
         assertFalse(result.result(), "conditional permission → result must be false (fail-closed)");
@@ -105,7 +108,7 @@ class PermissionSpiceDBQueryTest {
                         CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION));
 
         EntitlementsResult result = query.query(
-                new UserSubjectContext("user-1", "tenant-1"),
+                new UserSubjectContext("user-1", "tenant-1", List.of(REPORTS_READ), Map.of()),
                 new PermissionRequestContext("reports:read"));
 
         assertFalse(result.result(), "both denied → result must be false");
@@ -125,27 +128,98 @@ class PermissionSpiceDBQueryTest {
         });
 
         query.query(
-                new UserSubjectContext("user-abc", "tenant-xyz"),
+                new UserSubjectContext("user-abc", "tenant-xyz", List.of("my-permission"), Map.of()),
                 new PermissionRequestContext("my-permission"));
 
         CheckBulkPermissionsRequest request = captured.get();
         assertNotNull(request);
         assertEquals(2, request.getItemsCount(), "must send exactly 2 items for a single key");
 
-        CheckBulkPermissionsRequestItem userItem = request.getItems(0);
+        // tenant item is always first (index 0); user item is second (index 1) when userId present
+        CheckBulkPermissionsRequestItem tenantItem = request.getItems(0);
+        assertEquals("frontegg_tenant", tenantItem.getSubject().getObject().getObjectType());
+        assertEquals(base64("tenant-xyz"), tenantItem.getSubject().getObject().getObjectId());
+        assertEquals("frontegg_permission", tenantItem.getResource().getObjectType());
+        assertEquals(base64("my-permission"), tenantItem.getResource().getObjectId());
+        assertEquals("access", tenantItem.getPermission());
+
+        CheckBulkPermissionsRequestItem userItem = request.getItems(1);
         assertEquals("frontegg_user", userItem.getSubject().getObject().getObjectType());
         assertEquals(base64("user-abc"), userItem.getSubject().getObject().getObjectId());
         assertEquals("frontegg_permission", userItem.getResource().getObjectType(),
                 "resource type must be frontegg_permission, not frontegg_feature");
         assertEquals(base64("my-permission"), userItem.getResource().getObjectId());
         assertEquals("access", userItem.getPermission());
+    }
 
-        CheckBulkPermissionsRequestItem tenantItem = request.getItems(1);
-        assertEquals("frontegg_tenant", tenantItem.getSubject().getObject().getObjectType());
-        assertEquals(base64("tenant-xyz"), tenantItem.getSubject().getObject().getObjectId());
-        assertEquals("frontegg_permission", tenantItem.getResource().getObjectType());
-        assertEquals(base64("my-permission"), tenantItem.getResource().getObjectId());
-        assertEquals("access", tenantItem.getPermission());
+    @Test
+    void query_nullUserId_onlyTenantItemSent() {
+        AtomicReference<CheckBulkPermissionsRequest> captured = new AtomicReference<>();
+
+        PermissionSpiceDBQuery query = queryWith(req -> {
+            captured.set(req);
+            return emptyResponse();
+        });
+
+        query.query(
+                new UserSubjectContext(null, "tenant-xyz", List.of("my-permission"), Map.of()),
+                new PermissionRequestContext("my-permission"));
+
+        CheckBulkPermissionsRequest request = captured.get();
+        assertNotNull(request);
+        assertEquals(1, request.getItemsCount(), "only tenant item must be sent when userId is null");
+        assertEquals("frontegg_tenant", request.getItems(0).getSubject().getObject().getObjectType());
+        assertEquals(base64("tenant-xyz"), request.getItems(0).getSubject().getObject().getObjectId());
+    }
+
+    @Test
+    void query_blankUserId_onlyTenantItemSent() {
+        AtomicReference<CheckBulkPermissionsRequest> captured = new AtomicReference<>();
+
+        PermissionSpiceDBQuery query = queryWith(req -> {
+            captured.set(req);
+            return emptyResponse();
+        });
+
+        query.query(
+                new UserSubjectContext("   ", "tenant-xyz", List.of("my-permission"), Map.of()),
+                new PermissionRequestContext("my-permission"));
+
+        CheckBulkPermissionsRequest request = captured.get();
+        assertNotNull(request);
+        assertEquals(1, request.getItemsCount(), "only tenant item must be sent when userId is blank");
+        assertEquals("frontegg_tenant", request.getItems(0).getSubject().getObject().getObjectType());
+    }
+
+    @Test
+    void query_nullUserId_tenantEntitled_returnsAllowed() {
+        // When userId is null only the tenant item is sent; if tenant is entitled result must be true.
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(
+                req -> responseForRequest(req,
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION,
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION),
+                hasFeatures(), TEST_CONSISTENCY);
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext(null, "tenant-1", List.of(REPORTS_READ), Map.of()),
+                new PermissionRequestContext("reports:read"));
+
+        assertTrue(result.result(), "tenant entitled with null userId → result must be true");
+    }
+
+    @Test
+    void query_nullUserId_tenantDenied_returnsDenied() {
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(
+                req -> responseForRequest(req,
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION,
+                        CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION),
+                hasFeatures(), TEST_CONSISTENCY);
+
+        EntitlementsResult result = query.query(
+                new UserSubjectContext(null, "tenant-1", List.of(REPORTS_READ), Map.of()),
+                new PermissionRequestContext("reports:read"));
+
+        assertFalse(result.result(), "tenant denied with null userId → result must be false");
     }
 
     // -------------------------------------------------------------------------
@@ -163,6 +237,7 @@ class PermissionSpiceDBQueryTest {
 
         query.query(
                 new UserSubjectContext("user-1", "tenant-1",
+                        List.of(REPORTS_READ),
                         Map.of("plan", "enterprise", "active_at", "2026-01-01")),
                 new PermissionRequestContext("reports:read"));
 
@@ -170,14 +245,25 @@ class PermissionSpiceDBQueryTest {
         for (CheckBulkPermissionsRequestItem item : requests.get(0).getItemsList()) {
             assertTrue(item.hasContext(),
                     "caveat context must be present when attributes are non-empty");
-            assertNotNull(item.getContext());
-            assertTrue(item.getContext().getFieldsCount() > 0,
-                    "context struct must contain the user attributes");
+            com.google.protobuf.Struct ctx = item.getContext();
+            assertTrue(ctx.containsFields("user_context"),
+                    "attributes must be nested under 'user_context' (targeting caveat shape)");
+            com.google.protobuf.Struct uc = ctx.getFieldsOrThrow("user_context").getStructValue();
+            assertEquals("enterprise", uc.getFieldsOrThrow("plan").getStringValue(),
+                    "user attribute 'plan' must be present inside user_context");
+            assertEquals("2026-01-01", uc.getFieldsOrThrow("active_at").getStringValue(),
+                    "user attribute 'active_at' must be present inside user_context");
         }
     }
 
     @Test
-    void query_withoutAttributes_caveatContextNotAttached() {
+    void query_caveatContext_hasUserContextWrapper() {
+        // Regression test for the bug reported by QA:
+        // PermissionSpiceDBQuery was using CaveatContextBuilder.build() (flat struct) instead of
+        // buildForTargetingCaveat() (user_context-wrapped struct with `now`).
+        // The SpiceDB `targeting` caveat requires the `user_context` wrapper — without it SpiceDB
+        // returns PERMISSIONSHIP_CONDITIONAL_PERMISSION which the code treats as denied (fail-closed),
+        // causing permissions linked via feature → plan to incorrectly return false.
         List<CheckBulkPermissionsRequest> requests = new ArrayList<>();
 
         PermissionSpiceDBQuery query = queryWith(req -> {
@@ -186,13 +272,48 @@ class PermissionSpiceDBQueryTest {
         });
 
         query.query(
-                new UserSubjectContext("user-1", "tenant-1", Map.of()),
+                new UserSubjectContext("user-1", "tenant-1",
+                        List.of(REPORTS_READ), Map.of("plan", "enterprise")),
                 new PermissionRequestContext("reports:read"));
 
         assertEquals(1, requests.size());
         for (CheckBulkPermissionsRequestItem item : requests.get(0).getItemsList()) {
-            assertFalse(item.hasContext(),
-                    "caveat context must NOT be present when attributes are empty");
+            assertTrue(item.hasContext(), "caveat context must be present");
+            com.google.protobuf.Struct ctx = item.getContext();
+            assertTrue(ctx.containsFields("user_context"),
+                    "caveat context must be wrapped under 'user_context' key (targeting caveat shape) — "
+                    + "got fields: " + ctx.getFieldsMap().keySet());
+            com.google.protobuf.Struct userCtxStruct =
+                    ctx.getFieldsOrThrow("user_context").getStructValue();
+            assertTrue(userCtxStruct.containsFields("now"),
+                    "user_context must contain 'now' timestamp field required by targeting caveat");
+        }
+    }
+
+    @Test
+    void query_withoutAttributes_caveatContextStillHasUserContextWrapper() {
+        // buildForTargetingCaveat always returns a non-null Struct (always includes `now`),
+        // so context is present even when no user attributes are supplied.
+        List<CheckBulkPermissionsRequest> requests = new ArrayList<>();
+
+        PermissionSpiceDBQuery query = queryWith(req -> {
+            requests.add(req);
+            return emptyResponse();
+        });
+
+        query.query(
+                new UserSubjectContext("user-1", "tenant-1", List.of(REPORTS_READ), Map.of()),
+                new PermissionRequestContext("reports:read"));
+
+        assertEquals(1, requests.size());
+        for (CheckBulkPermissionsRequestItem item : requests.get(0).getItemsList()) {
+            assertTrue(item.hasContext(),
+                    "caveat context must be present (targeting caveat always requires user_context with now)");
+            assertTrue(item.getContext().containsFields("user_context"),
+                    "caveat context must have user_context wrapper even when no attributes are supplied");
+            assertTrue(item.getContext().getFieldsOrThrow("user_context")
+                            .getStructValue().containsFields("now"),
+                    "user_context must contain 'now' field");
         }
     }
 
@@ -254,42 +375,61 @@ class PermissionSpiceDBQueryTest {
     }
 
     @Test
-    void query_emptyPermissionsCache_skipsCacheAndProceedsToSpiceDB() {
+    void query_noPermissionsList_returnsDeniedWithoutSpiceDB() {
+        // No permissions list → deny immediately (JS SDK parity: permissions?.some() ?? false).
         AtomicReference<Boolean> bulkCalled = new AtomicReference<>(false);
         PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
             bulkCalled.set(true);
-            return responseForRequest(req,
-                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
-                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
+            return emptyResponse();
         }, hasFeatures(), TEST_CONSISTENCY);
 
-        // No permissions list → cache check skipped
         EntitlementsResult result = query.query(
                 new UserSubjectContext("user-1", "tenant-1"),
                 new PermissionRequestContext("reports:read"));
 
-        assertTrue(result.result(), "no cache → falls through to SpiceDB which allows");
-        assertTrue(bulkCalled.get(), "bulk check must be called when no permissions cache is set");
+        assertFalse(result.result(), "no permissions list → must deny");
+        assertFalse(bulkCalled.get(), "SpiceDB must NOT be called when no permissions list is provided");
     }
 
     @Test
-    void query_emptyPermissionsInContext_skipsCacheAndProceedsToFeatureLinking() {
+    void query_noPermissionsProvided_returnsDeniedWithoutSpiceDB() {
+        // JS SDK parity: permissions?.some(...) ?? false
+        // When no permissions list is supplied, hasPermission returns false → deny immediately.
+        // Java was incorrectly skipping the check and falling through to SpiceDB (which could
+        // return true), diverging from JS/React SDK behaviour.
         AtomicReference<Boolean> bulkCalled = new AtomicReference<>(false);
-
         PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
             bulkCalled.set(true);
             return responseForRequest(req,
                     CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
-                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION);
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION);
         }, hasFeatures(), TEST_CONSISTENCY);
 
-        // Empty list of permissions (not null, but empty)
+        EntitlementsResult result = query.query(
+                new UserSubjectContext("user-1", "tenant-1"),
+                new PermissionRequestContext("fe.x.write"));
+
+        assertFalse(result.result(), "no permissions list → must deny without SpiceDB call (JS SDK parity)");
+        assertFalse(bulkCalled.get(), "SpiceDB must NOT be called when no permissions list is provided");
+    }
+
+    @Test
+    void query_emptyPermissionsList_returnsDeniedWithoutSpiceDB() {
+        // Explicit empty list is the same signal as absent list in JS SDK: deny immediately.
+        AtomicReference<Boolean> bulkCalled = new AtomicReference<>(false);
+        PermissionSpiceDBQuery query = new PermissionSpiceDBQuery(req -> {
+            bulkCalled.set(true);
+            return responseForRequest(req,
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
+                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION);
+        }, hasFeatures(), TEST_CONSISTENCY);
+
         EntitlementsResult result = query.query(
                 new UserSubjectContext("user-1", "tenant-1", List.of(), Map.of()),
-                new PermissionRequestContext("reports:read"));
+                new PermissionRequestContext("fe.x.write"));
 
-        assertTrue(result.result(), "empty permissions list skips cache and falls through");
-        assertTrue(bulkCalled.get(), "CheckBulkPermissions must be called after feature-linking");
+        assertFalse(result.result(), "empty permissions list → must deny without SpiceDB call (JS SDK parity)");
+        assertFalse(bulkCalled.get(), "SpiceDB must NOT be called when permissions list is empty");
     }
 
     // -------------------------------------------------------------------------
@@ -306,7 +446,7 @@ class PermissionSpiceDBQueryTest {
         }, noFeatures(), TEST_CONSISTENCY);
 
         EntitlementsResult result = query.query(
-                new UserSubjectContext("user-1", "tenant-1"),
+                new UserSubjectContext("user-1", "tenant-1", List.of(REPORTS_READ), Map.of()),
                 new PermissionRequestContext("reports:read"));
 
         assertTrue(result.result(), "not linked to feature → should be allowed immediately");
@@ -325,7 +465,7 @@ class PermissionSpiceDBQueryTest {
         }, hasFeatures(), TEST_CONSISTENCY);
 
         EntitlementsResult result = query.query(
-                new UserSubjectContext("user-1", "tenant-1"),
+                new UserSubjectContext("user-1", "tenant-1", List.of(REPORTS_READ), Map.of()),
                 new PermissionRequestContext("reports:read"));
 
         assertTrue(result.result(), "linked to feature + SpiceDB allows → result must be true");
@@ -354,13 +494,13 @@ class PermissionSpiceDBQueryTest {
 
         // First call — should call LookupSubjects once, cache the "true" result.
         query.query(
-                new UserSubjectContext("user-1", "tenant-1"),
+                new UserSubjectContext("user-1", "tenant-1", List.of(REPORTS_READ), Map.of()),
                 new PermissionRequestContext("reports:read"));
         assertEquals(1, lookupCallCount.get(), "LookupSubjects must be called on the first request");
 
         // Second call with the same permission key — should use cache; LookupSubjects not called again.
         query.query(
-                new UserSubjectContext("user-1", "tenant-1"),
+                new UserSubjectContext("user-1", "tenant-1", List.of(REPORTS_READ), Map.of()),
                 new PermissionRequestContext("reports:read"));
         assertEquals(1, lookupCallCount.get(),
                 "LookupSubjects must NOT be called again when cached true is still valid");
@@ -386,7 +526,7 @@ class PermissionSpiceDBQueryTest {
 
         // First call — populates cache.
         query.query(
-                new UserSubjectContext("user-1", "tenant-1"),
+                new UserSubjectContext("user-1", "tenant-1", List.of(REPORTS_READ), Map.of()),
                 new PermissionRequestContext("reports:read"));
         assertEquals(1, lookupCallCount.get(), "LookupSubjects must be called on first request");
 
@@ -395,7 +535,7 @@ class PermissionSpiceDBQueryTest {
 
         // Second call after expiry — must re-check SpiceDB.
         query.query(
-                new UserSubjectContext("user-1", "tenant-1"),
+                new UserSubjectContext("user-1", "tenant-1", List.of(REPORTS_READ), Map.of()),
                 new PermissionRequestContext("reports:read"));
         assertEquals(2, lookupCallCount.get(),
                 "LookupSubjects must be called again after cache TTL expires");
@@ -419,8 +559,9 @@ class PermissionSpiceDBQueryTest {
 
     /**
      * Builds a response that mirrors the items from the request, assigning permissionships
-     * in round-robin order (userPermissionship for even indices, tenantPermissionship for odd).
-     * This simulates the SpiceDB response pattern: [user→key, tenant→key, user→key2, ...].
+     * in round-robin order (tenantPermissionship for even indices, userPermissionship for odd).
+     * This simulates the SpiceDB response pattern: [tenant→key, user→key, tenant→key2, ...].
+     * Tenant is always added first; user item is added second (only when userId is present).
      */
     private static CheckBulkPermissionsResponse responseForRequest(
             CheckBulkPermissionsRequest req,
@@ -429,8 +570,8 @@ class PermissionSpiceDBQueryTest {
         CheckBulkPermissionsResponse.Builder responseBuilder = CheckBulkPermissionsResponse.newBuilder();
         List<CheckBulkPermissionsRequestItem> items = req.getItemsList();
         for (int i = 0; i < items.size(); i++) {
-            // Even index = user item, odd index = tenant item (pairs are added user first)
-            CheckPermissionResponse.Permissionship p = (i % 2 == 0) ? userPermissionship : tenantPermissionship;
+            // Even index = tenant item, odd index = user item (tenant is added first)
+            CheckPermissionResponse.Permissionship p = (i % 2 == 0) ? tenantPermissionship : userPermissionship;
             responseBuilder.addPairs(pairWithRequest(items.get(i), p));
         }
         return responseBuilder.build();

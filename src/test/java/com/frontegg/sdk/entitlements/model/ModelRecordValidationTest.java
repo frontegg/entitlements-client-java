@@ -11,6 +11,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -27,17 +28,19 @@ class ModelRecordValidationTest {
     class UserSubjectContextTests {
 
         @Test
-        void nullUserId_throwsNullPointerException() {
-            assertThrows(NullPointerException.class,
-                    () -> new UserSubjectContext(null, "tenant-1"));
+        void nullUserId_isAllowed() {
+            // userId is optional — null means tenant-only evaluation (JS SDK parity)
+            UserSubjectContext ctx = new UserSubjectContext(null, "tenant-1");
+            assertNull(ctx.userId());
         }
 
         @Test
-        void blankUserId_throwsIllegalArgumentException() {
-            assertThrows(IllegalArgumentException.class,
-                    () -> new UserSubjectContext("", "tenant-1"));
-            assertThrows(IllegalArgumentException.class,
-                    () -> new UserSubjectContext("   ", "tenant-1"));
+        void blankUserId_isAllowed() {
+            // blank userId is treated the same as null — user item skipped in SpiceDB request
+            UserSubjectContext ctx = new UserSubjectContext("", "tenant-1");
+            assertEquals("", ctx.userId());
+            UserSubjectContext ctxSpaces = new UserSubjectContext("   ", "tenant-1");
+            assertEquals("   ", ctxSpaces.userId());
         }
 
         @Test

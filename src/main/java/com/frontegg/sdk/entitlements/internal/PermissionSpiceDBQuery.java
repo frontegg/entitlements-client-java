@@ -102,22 +102,24 @@ class PermissionSpiceDBQuery {
      *         {@link EntitlementsResult#denied()} otherwise
      */
     EntitlementsResult query(UserSubjectContext userCtx, PermissionRequestContext permissionCtx) {
-        String b64UserId = Base64Utils.encode(userCtx.userId());
+        String b64UserId = userCtx.userId() != null && !userCtx.userId().isBlank()
+                ? Base64Utils.encode(userCtx.userId()) : null;
         String b64TenantId = Base64Utils.encode(userCtx.tenantId());
         String permissionKey = permissionCtx.permissionKey();
 
         log.debug("Permission check userId={} tenantId={} permissionKey={}",
                 userCtx.userId(), userCtx.tenantId(), permissionKey);
 
-        // Step 1: client-side cache check — if the caller supplied a permissions list,
-        // the requested key must match at least one pattern; if not → deny immediately.
+        // Step 1: client-side permissions check — the caller must supply a non-empty permissions
+        // list; the requested key must match at least one pattern, otherwise deny immediately.
+        // An absent or empty list means the user has no known permissions → deny (JS SDK parity:
+        // permissions?.some(...) ?? false).
         List<String> cachedPermissions = userCtx.permissions();
-        if (!cachedPermissions.isEmpty()) {
-            if (!PermissionPatternMatcher.matches(permissionKey, cachedPermissions)) {
-                log.debug("Permission cache miss userId={} permissionKey={} — denying without SpiceDB call",
-                        userCtx.userId(), permissionKey);
-                return EntitlementsResult.denied();
-            }
+        if (cachedPermissions.isEmpty()
+                || !PermissionPatternMatcher.matches(permissionKey, cachedPermissions)) {
+            log.debug("Permission check denied userId={} permissionKey={} — no matching permission in list (size={})",
+                    userCtx.userId(), permissionKey, cachedPermissions.size());
+            return EntitlementsResult.denied();
         }
 
         // Step 2: feature-linking check — if the permission is not linked to any feature
@@ -128,7 +130,7 @@ class PermissionSpiceDBQuery {
             return EntitlementsResult.allowed();
         }
 
-        Struct caveatContext = CaveatContextBuilder.build(userCtx.attributes(), null);
+        Struct caveatContext = CaveatContextBuilder.buildForTargetingCaveat(userCtx.attributes(), null);
 
         String b64PermissionKey = Base64Utils.encode(permissionKey);
 
@@ -137,11 +139,15 @@ class PermissionSpiceDBQuery {
                 .setObjectId(b64PermissionKey)
                 .build();
 
-        CheckBulkPermissionsRequest request = CheckBulkPermissionsRequest.newBuilder()
+        CheckBulkPermissionsRequest.Builder requestBuilder = CheckBulkPermissionsRequest.newBuilder()
                 .setConsistency(consistencySupplier.get())
-                .addItems(buildItem(TYPE_USER, b64UserId, permissionResource, caveatContext))
-                .addItems(buildItem(TYPE_TENANT, b64TenantId, permissionResource, caveatContext))
-                .build();
+                .addItems(buildItem(TYPE_TENANT, b64TenantId, permissionResource, caveatContext));
+
+        if (b64UserId != null) {
+            requestBuilder.addItems(buildItem(TYPE_USER, b64UserId, permissionResource, caveatContext));
+        }
+
+        CheckBulkPermissionsRequest request = requestBuilder.build();
 
         CheckBulkPermissionsResponse response = executor.execute(request);
 
