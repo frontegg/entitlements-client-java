@@ -29,6 +29,7 @@ be created once and shared for the lifetime of an application.
   - [Monitoring Mode](#monitoring-mode)
   - [Error Handling](#error-handling)
 - [Spring Boot Starter](#spring-boot-starter)
+  - [Quarkus and Micronaut](#quarkus-and-micronaut)
 - [Test Utilities](#test-utilities)
 - [Compatibility](#compatibility)
 - [Contributing](#contributing)
@@ -135,6 +136,7 @@ import com.frontegg.sdk.entitlements.EntitlementsClientFactory;
 import com.frontegg.sdk.entitlements.config.ClientConfiguration;
 import com.frontegg.sdk.entitlements.model.EntitlementsResult;
 import com.frontegg.sdk.entitlements.model.FeatureRequestContext;
+import com.frontegg.sdk.entitlements.model.PermissionRequestContext;
 import com.frontegg.sdk.entitlements.model.UserSubjectContext;
 
 // 1. Build the configuration. engineEndpoint and engineToken are required.
@@ -300,8 +302,15 @@ EntitlementsResult result = client.isEntitledTo(
 
 ### Permission Entitlement Check
 
-Use `PermissionRequestContext` to check one or more named permissions. When multiple permission
-keys are provided the check is a logical AND — the subject must hold all of them.
+Use `PermissionRequestContext` to check a named permission. `PermissionRequestContext` accepts a
+single permission key string.
+
+> **Important:** Permission checks require the subject's permission list to be supplied via
+> `UserSubjectContext`. The SDK performs a **client-side short-circuit** before reaching SpiceDB:
+> if `UserSubjectContext.permissions()` is empty or the requested key does not match any entry in
+> the list, the check is immediately denied without a network call. Pass the user's permission keys
+> (obtained from the Frontegg token or session) in the `permissions` argument. Entries support
+> simple glob wildcards — `*` matches one or more characters, `.` is treated as a literal dot.
 
 ```java
 import com.frontegg.sdk.entitlements.model.PermissionRequestContext;
@@ -309,7 +318,13 @@ import com.frontegg.sdk.entitlements.model.UserSubjectContext;
 import com.frontegg.sdk.entitlements.model.EntitlementsResult;
 import java.util.List;
 
-UserSubjectContext subject = new UserSubjectContext("user-123", "tenant-456");
+// Supply the user's permission keys to enable the check.
+// These typically come from the decoded Frontegg access token.
+UserSubjectContext subject = new UserSubjectContext(
+        "user-123",
+        "tenant-456",
+        List.of("reports:read", "reports:export", "fe.billing.*")  // user's permission list
+);
 
 // Single permission check
 EntitlementsResult readResult = client.isEntitledTo(
@@ -317,16 +332,23 @@ EntitlementsResult readResult = client.isEntitledTo(
         new PermissionRequestContext("reports:read")
 );
 
-// Multiple permissions — subject must hold ALL of them
+if (!readResult.result()) {
+    throw new AccessDeniedException("reports:read is required");
+}
+
+// Check a second permission for the same subject
 EntitlementsResult exportResult = client.isEntitledTo(
         subject,
-        new PermissionRequestContext(List.of("reports:read", "reports:export"))
+        new PermissionRequestContext("reports:export")
 );
 
 if (!exportResult.result()) {
-    throw new AccessDeniedException("reports:read and reports:export are both required");
+    throw new AccessDeniedException("reports:export is required");
 }
 ```
+
+The `permissions` list also supports glob wildcards, so a user holding `"fe.billing.*"` will pass
+a check for `"fe.billing.read"` at the client-side stage before any SpiceDB call is made.
 
 ---
 
@@ -410,7 +432,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
-Executor appExecutor = Executors.newVirtualThreadPerTaskExecutor(); // Java 21+
+Executor appExecutor = Executors.newCachedThreadPool(); // Java 17+
+// On Java 21+, prefer: Executors.newVirtualThreadPerTaskExecutor()
 
 CompletableFuture<EntitlementsResult> future = client.isEntitledToAsync(
         new UserSubjectContext("user-123", "tenant-456"),
@@ -507,23 +530,23 @@ The order of IDs returned is not guaranteed to be stable across calls.
 
 ### Time-Based Access
 
-All three request context types — `FeatureRequestContext`, `PermissionRequestContext`, and
-`RouteRequestContext` — accept an optional `Instant at` parameter. When supplied, the value is
-forwarded to the authorization engine as the `"at"` field in the caveat context (ISO-8601 format),
-enabling entitlement checks at a specific point in time (past or future). When `at` is omitted
-or `null`, the check is evaluated at the current time.
+The `"at"` parameter for time-based access is forwarded to the authorization engine as the
+`"at"` field in the caveat context (ISO-8601 format), enabling entitlement checks at a specific
+point in time (past or future). When `at` is omitted, the check is evaluated at the current time.
 
 This is useful for previewing scheduled access windows, auditing historical decisions, or
 implementing time-limited entitlements.
 
+`FeatureRequestContext` and `RouteRequestContext` support an optional `Instant at` argument.
+`PermissionRequestContext` does not have a time-based variant — use `FeatureRequestContext` or
+`RouteRequestContext` for time-gated access control.
+
 ```java
 import com.frontegg.sdk.entitlements.model.FeatureRequestContext;
-import com.frontegg.sdk.entitlements.model.PermissionRequestContext;
 import com.frontegg.sdk.entitlements.model.RouteRequestContext;
 import com.frontegg.sdk.entitlements.model.UserSubjectContext;
 
 import java.time.Instant;
-import java.util.List;
 
 UserSubjectContext subject = new UserSubjectContext("user-123", "tenant-456");
 
@@ -534,12 +557,6 @@ EntitlementsResult featureResult = client.isEntitledTo(
         new FeatureRequestContext("advanced-reporting", trialExpiry)
 );
 
-// Permission check at a fixed point in time
-EntitlementsResult permissionResult = client.isEntitledTo(
-        subject,
-        new PermissionRequestContext(List.of("reports:export"), trialExpiry)
-);
-
 // Route check at a fixed point in time
 EntitlementsResult routeResult = client.isEntitledTo(
         subject,
@@ -547,8 +564,7 @@ EntitlementsResult routeResult = client.isEntitledTo(
 );
 ```
 
-The two-argument constructors for all three types are equivalent to passing `null` for `at` —
-both evaluate the check at the current time:
+The single-argument constructors are equivalent to passing `null` for `at`:
 
 ```java
 // These two are equivalent
@@ -615,18 +631,18 @@ to your project:
 <dependency>
     <groupId>com.github.ben-manes.caffeine</groupId>
     <artifactId>caffeine</artifactId>
-    <version>3.1.8</version>
+    <version>3.2.3</version>
 </dependency>
 ```
 
 **Gradle:**
 
 ```groovy
-implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
+implementation 'com.github.ben-manes.caffeine:caffeine:3.2.3'
 ```
 
 If Caffeine is not on the classpath and caching is configured, the client throws a
-`ClassNotFoundException` at startup.
+`NoClassDefFoundError` when `EntitlementsClientFactory.create(...)` is called.
 
 > Cached results are never returned when monitoring mode is active and are not stored for
 > fallback results — only real engine responses are cached.
@@ -756,6 +772,10 @@ if (result.monitoring()) {
 Switch to enforcement by setting `monitoring(false)` or removing the call — `false` is the
 default.
 
+> When monitoring mode is active, the in-memory cache (if configured) is bypassed entirely —
+> cached results are never returned and monitoring results are never stored. Every call goes
+> directly to SpiceDB.
+
 ---
 
 ### Error Handling
@@ -812,6 +832,11 @@ try {
 When a fallback strategy is configured, `EntitlementsQueryException` and
 `EntitlementsTimeoutException` are swallowed by the SDK and the fallback result is returned
 instead — no try-catch is needed at query sites.
+
+**Which gRPC errors are retried:** only `UNAVAILABLE` and `DEADLINE_EXCEEDED` status codes
+trigger the retry+backoff logic. Non-transient errors (`PERMISSION_DENIED`, `UNAUTHENTICATED`,
+`INVALID_ARGUMENT`, `NOT_FOUND`, etc.) are thrown immediately on the first attempt without
+sleeping or retrying.
 
 ---
 
@@ -894,15 +919,49 @@ frontegg:
 
 ### Auto-configuration conditions
 
-The `EntitlementsClient` bean is created automatically when all three conditions are satisfied:
+The `EntitlementsClient` bean is created automatically when all of the following conditions are
+satisfied:
 
-1. `frontegg.entitlements.enabled` is `true` (default).
-2. `frontegg.entitlements.engine-endpoint` is set to a non-empty value.
+1. `entitlements-client` is on the classpath (`@ConditionalOnClass`).
+2. `frontegg.entitlements.enabled` is `true` (default).
 3. No existing `EntitlementsClient` bean is present in the application context.
 
+Both `frontegg.entitlements.engine-endpoint` and `frontegg.entitlements.engine-token` must also
+be set to non-blank values — the auto-configuration throws `IllegalStateException` at bean
+creation time if either is missing.
+
 The third condition means you can override the auto-configured bean entirely by declaring your
-own `@Bean` method that returns an `EntitlementsClient`. This is useful when you need credential
-rotation via a `Supplier<String>` for the token, which is not expressible in properties files.
+own `@Bean` method that returns an `EntitlementsClient`. This is the recommended approach when
+you need credential rotation via a `Supplier<String>` for the token, which is not expressible in
+properties files:
+
+```java
+import com.frontegg.sdk.entitlements.EntitlementsClient;
+import com.frontegg.sdk.entitlements.EntitlementsClientFactory;
+import com.frontegg.sdk.entitlements.config.ClientConfiguration;
+import com.frontegg.sdk.entitlements.fallback.FunctionFallback;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class EntitlementsConfig {
+
+    @Bean
+    public EntitlementsClient entitlementsClient(SecretStore secretStore) {
+        ClientConfiguration config = ClientConfiguration.builder()
+                .engineEndpoint("grpc.authz.example.com:443")
+                // Supplier enables token rotation without recreating the client
+                .engineToken(() -> secretStore.getSecret("entitlements-engine-token"))
+                // Custom fallback logic (not expressible in application.properties)
+                .fallbackStrategy(new FunctionFallback(ctx -> {
+                    logger.warn("Entitlement engine unreachable: {}", ctx.error().getMessage());
+                    return EntitlementsResult.denied();
+                }))
+                .build();
+        return EntitlementsClientFactory.create(config);
+    }
+}
+```
 
 ### Injecting the client
 
@@ -934,6 +993,72 @@ public class ReportService {
     }
 }
 ```
+
+### Quarkus and Micronaut
+
+For Quarkus and Micronaut applications, there is no framework-specific starter module. Create the
+client manually as a managed singleton bean and call `close()` in the destroy lifecycle:
+
+**Quarkus (CDI):**
+
+```java
+import com.frontegg.sdk.entitlements.EntitlementsClient;
+import com.frontegg.sdk.entitlements.EntitlementsClientFactory;
+import com.frontegg.sdk.entitlements.config.ClientConfiguration;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Produces;
+import jakarta.inject.Singleton;
+import io.quarkus.runtime.Shutdown;
+
+@ApplicationScoped
+public class EntitlementsProducer {
+
+    private EntitlementsClient client;
+
+    @Produces
+    @Singleton
+    public EntitlementsClient entitlementsClient() {
+        ClientConfiguration config = ClientConfiguration.builder()
+                .engineEndpoint(System.getenv("ENTITLEMENTS_ENGINE_ENDPOINT"))
+                .engineToken(System.getenv("ENTITLEMENTS_ENGINE_TOKEN"))
+                .build();
+        client = EntitlementsClientFactory.create(config);
+        return client;
+    }
+
+    @Shutdown
+    public void onShutdown() {
+        if (client != null) client.close();
+    }
+}
+```
+
+**Micronaut:**
+
+```java
+import com.frontegg.sdk.entitlements.EntitlementsClient;
+import com.frontegg.sdk.entitlements.EntitlementsClientFactory;
+import com.frontegg.sdk.entitlements.config.ClientConfiguration;
+import io.micronaut.context.annotation.Factory;
+import io.micronaut.context.event.ApplicationEventListener;
+import io.micronaut.runtime.event.ApplicationShutdownEvent;
+import jakarta.inject.Singleton;
+
+@Factory
+public class EntitlementsFactory {
+
+    @Singleton
+    public EntitlementsClient entitlementsClient() {
+        ClientConfiguration config = ClientConfiguration.builder()
+                .engineEndpoint(System.getenv("ENTITLEMENTS_ENGINE_ENDPOINT"))
+                .engineToken(System.getenv("ENTITLEMENTS_ENGINE_TOKEN"))
+                .build();
+        return EntitlementsClientFactory.create(config);
+    }
+}
+```
+
+Register a shutdown listener or use `@PreDestroy` on a wrapper bean to call `client.close()`.
 
 ---
 
@@ -1108,6 +1233,19 @@ cannot be used on Java 11 or earlier.
 3. Ensure `mvn verify` passes locally before opening a pull request.
 4. Follow the existing commit message format: `FR-<JIRA-KEY> - <description>`.
 5. Open a pull request against `master` with a clear description of the change and its motivation.
+
+### Running tests
+
+```bash
+# Unit tests only (no external dependencies)
+mvn test
+
+# Integration tests — requires Docker (uses Testcontainers to spin up a real SpiceDB instance)
+mvn verify -Pintegration
+
+# End-to-end tests — requires a running SpiceDB instance
+mvn verify -Pe2e -Dspicedb.endpoint=<host:port> -Dspicedb.token=<token>
+```
 
 For bug reports and feature requests, open a GitHub Issue with a minimal reproducer or a
 description of the desired behaviour.
