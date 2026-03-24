@@ -16,6 +16,8 @@ import com.frontegg.sdk.entitlements.model.RouteRequestContext;
 import com.frontegg.sdk.entitlements.model.UserSubjectContext;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -138,8 +140,9 @@ class SpiceDBIntegrationTest {
     @Test
     @Order(10)
     void permissionCheck_singlePermission_entitled_returnsAllowed() {
+        // Supply the user's permission list so the client-side short-circuit passes.
         EntitlementsResult result = client.isEntitledTo(
-                new UserSubjectContext("user-1", "tenant-1"),
+                new UserSubjectContext("user-1", "tenant-1", List.of("reports:read"), Map.of()),
                 new PermissionRequestContext("reports:read"));
         assertTrue(result.result(), "user-1 should be entitled to 'reports:read'");
     }
@@ -148,9 +151,10 @@ class SpiceDBIntegrationTest {
     @Order(11)
     void permissionCheck_singlePermission_notLinkedToFeature_returnsAllowed() {
         // 'admin:write' has no parent feature link in SpiceDB — self-sufficient permission
-        // → SDK short-circuits to allowed without a CheckBulkPermissions call (JS SDK parity)
+        // → SDK short-circuits to allowed without a CheckBulkPermissions call (JS SDK parity).
+        // Still requires the permission to be in the user's list to pass the client-side check.
         EntitlementsResult result = client.isEntitledTo(
-                new UserSubjectContext("user-1", "tenant-1"),
+                new UserSubjectContext("user-1", "tenant-1", List.of("admin:write"), Map.of()),
                 new PermissionRequestContext("admin:write"));
         assertTrue(result.result(), "permission not linked to any feature should be self-sufficient → allowed");
     }

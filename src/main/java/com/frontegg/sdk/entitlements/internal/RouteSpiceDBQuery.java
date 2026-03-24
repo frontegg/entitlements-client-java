@@ -282,6 +282,7 @@ class RouteSpiceDBQuery {
         }
 
         ReadRelationshipsRequest request = ReadRelationshipsRequest.newBuilder()
+                .setConsistency(consistencySupplier.get())
                 .setRelationshipFilter(RelationshipFilter.newBuilder()
                         .setResourceType(TYPE_ROUTE)
                         .build())
