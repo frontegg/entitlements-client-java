@@ -11,6 +11,8 @@ import com.frontegg.sdk.entitlements.model.EntitySubjectContext;
 import com.frontegg.sdk.entitlements.model.LookupResourcesRequest;
 import com.frontegg.sdk.entitlements.model.LookupResult;
 import com.frontegg.sdk.entitlements.model.LookupSubjectsRequest;
+import com.frontegg.sdk.entitlements.model.PermissionRequestContext;
+import com.frontegg.sdk.entitlements.model.UserSubjectContext;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 
 import java.time.Instant;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -27,8 +30,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * End-to-end tests that run against an external SpiceDB instance (e.g. via docker-compose).
  *
- * <p>These tests exercise the same caveat/inheritance scenarios as the Node.js SDK demo,
- * validating full parity between the Java and Node.js SDKs.
+ * <p>These tests exercise the new schema defined in {@code e2e/e2e-schema-relationship.yaml},
+ * covering the frontegg plan→feature→permission hierarchy and custom FGA types
+ * (cust_user, cust_group, cust_subscription, cust_document) with {@code active_at} caveats.
  *
  * <p>Run with: {@code mvn verify -P e2e -Dspicedb.endpoint=localhost:50051 -Dspicedb.token=spicedb}
  * <p>Or use the convenience script: {@code ./e2e/run-e2e.sh}
@@ -71,144 +75,180 @@ class SpiceDBE2ETest {
     }
 
     // -------------------------------------------------------------------------
-    // Demo 1: Alice reads Tim's salary via folder inheritance
+    // Demo 1: Permission inheritance through plan→feature→permission hierarchy
     // -------------------------------------------------------------------------
 
     @Test
     @Order(1)
-    void alice_canReadTimsSalaryViaFolderInheritance() {
+    void tenant_hasAccessToPermissionViaFeaturePlan() {
+        // test-tenant-1 is entitled via plan→feature→permission chain.
+        // UserSubjectContext with the permission key in the permissions list allows the SDK to
+        // pass through client-side filtering and use buildForTargetingCaveat (which populates
+        // user_context["now"]) when calling SpiceDB.
         EntitlementsResult result = client.isEntitledTo(
-                new EntitySubjectContext("frontegg_user", "Alice"),
-                new EntityRequestContext("document", "Tim's_salary_Jan", "read_doc",
-                        Instant.parse("2026-02-01T00:00:00Z")));
+                new UserSubjectContext("test-user-1", "test-tenant-1",
+                        List.of("test-permission-1"), java.util.Map.of()),
+                new PermissionRequestContext("test-permission-1"));
         assertTrue(result.result(),
-                "Alice should read Tim's Jan salary doc via folder inheritance");
-    }
-
-    @Test
-    @Order(2)
-    void alice_cannotReadBeforeParentActivation() {
-        EntitlementsResult result = client.isEntitledTo(
-                new EntitySubjectContext("frontegg_user", "Alice"),
-                new EntityRequestContext("document", "Tim's_salary_Feb", "read_doc",
-                        Instant.parse("2026-01-15T00:00:00Z")));
-        assertFalse(result.result(),
-                "Alice should be denied Feb salary doc before parent folder activation");
+                "test-tenant-1 should have access to test-permission-1 via plan→feature→permission chain");
     }
 
     // -------------------------------------------------------------------------
-    // Demo 2: Tim reads his own salary (direct, time-gated)
+    // Demo 2: cust_user accesses cust_document via group→subscription hierarchy
     // -------------------------------------------------------------------------
 
     @Test
     @Order(10)
-    void tim_canReadJanSalaryAtJan() {
+    void custUser_hasAccessToDocViaGroupSubscription() {
+        // user-1-r4up1aoO is member of group-1-R1NipP4y
+        // group-1-R1NipP4y is parent_group of sub-1-9Xn1Adj8
+        // sub-1-9Xn1Adj8 is parent_subscription of doc-1-VTj7UDZ9
         EntitlementsResult result = client.isEntitledTo(
-                new EntitySubjectContext("frontegg_user", "Tim"),
-                new EntityRequestContext("document", "Tim's_salary_Jan", "read_doc",
-                        Instant.parse("2026-01-01T00:00:00Z")));
+                new EntitySubjectContext("cust_user", "user-1-r4up1aoO"),
+                new EntityRequestContext("cust_document", "doc-1-VTj7UDZ9", "access", null));
         assertTrue(result.result(),
-                "Tim should read Jan salary doc at 2026-01-01");
+                "user-1-r4up1aoO should have access to doc-1-VTj7UDZ9 via group→subscription chain");
     }
 
     @Test
     @Order(11)
-    void tim_cannotReadFebSalaryAtJan() {
+    void unknownUser_hasNoAccessToDoc() {
         EntitlementsResult result = client.isEntitledTo(
-                new EntitySubjectContext("frontegg_user", "Tim"),
-                new EntityRequestContext("document", "Tim's_salary_Feb", "read_doc",
-                        Instant.parse("2026-01-01T00:00:00Z")));
+                new EntitySubjectContext("cust_user", "unknown-user"),
+                new EntityRequestContext("cust_document", "doc-1-VTj7UDZ9", "access", null));
         assertFalse(result.result(),
-                "Tim should be denied Feb salary doc at 2026-01-01");
-    }
-
-    @Test
-    @Order(12)
-    void tim_canReadFebSalaryAtFeb() {
-        EntitlementsResult result = client.isEntitledTo(
-                new EntitySubjectContext("frontegg_user", "Tim"),
-                new EntityRequestContext("document", "Tim's_salary_Feb", "read_doc",
-                        Instant.parse("2026-02-01T00:00:00Z")));
-        assertTrue(result.result(),
-                "Tim should read Feb salary doc at 2026-02-01");
-    }
-
-    @Test
-    @Order(13)
-    void tim_canReadMarSalaryAtMar() {
-        EntitlementsResult result = client.isEntitledTo(
-                new EntitySubjectContext("frontegg_user", "Tim"),
-                new EntityRequestContext("document", "Tim's_salary_Mar", "read_doc",
-                        Instant.parse("2026-03-01T00:00:00Z")));
-        assertTrue(result.result(),
-                "Tim should read Mar salary doc at 2026-03-01");
+                "unknown-user should not have access to doc-1-VTj7UDZ9");
     }
 
     // -------------------------------------------------------------------------
-    // Demo 3: Lookup documents Tim can read at different times
+    // Demo 3: Time-gated cust_document viewer access
     // -------------------------------------------------------------------------
 
     @Test
     @Order(20)
-    void lookupResources_timAtJan_onlyJanDoc() {
-        LookupResult result = client.lookupResources(
-                new LookupResourcesRequest("frontegg_user", "Tim", "read_doc", "document",
+    void custUser2_canViewDoc2AtJan() {
+        EntitlementsResult result = client.isEntitledTo(
+                new EntitySubjectContext("cust_user", "user-2-jan"),
+                new EntityRequestContext("cust_document", "doc-2-jan", "access",
                         Instant.parse("2026-01-01T00:00:00Z")));
-        assertNotNull(result);
-        assertTrue(result.entityIds().contains("Tim's_salary_Jan"));
-        assertFalse(result.entityIds().contains("Tim's_salary_Feb"));
-        assertFalse(result.entityIds().contains("Tim's_salary_Mar"));
+        assertTrue(result.result(),
+                "user-2-jan should be able to view doc-2-jan at 2026-01-01 (activeFrom=2026-01-01)");
     }
 
     @Test
     @Order(21)
-    void lookupResources_timAtFeb_janAndFebDocs() {
-        LookupResult result = client.lookupResources(
-                new LookupResourcesRequest("frontegg_user", "Tim", "read_doc", "document",
-                        Instant.parse("2026-02-01T00:00:00Z")));
-        assertNotNull(result);
-        assertTrue(result.entityIds().contains("Tim's_salary_Jan"));
-        assertTrue(result.entityIds().contains("Tim's_salary_Feb"));
-        assertFalse(result.entityIds().contains("Tim's_salary_Mar"));
+    void custUser2_cannotViewDoc2BeforeJan() {
+        EntitlementsResult result = client.isEntitledTo(
+                new EntitySubjectContext("cust_user", "user-2-jan"),
+                new EntityRequestContext("cust_document", "doc-2-jan", "access",
+                        Instant.parse("2025-12-31T23:59:59Z")));
+        assertFalse(result.result(),
+                "user-2-jan should not be able to view doc-2-jan before 2026-01-01");
     }
 
     @Test
     @Order(22)
-    void lookupResources_timAtMar_allThreeDocs() {
-        LookupResult result = client.lookupResources(
-                new LookupResourcesRequest("frontegg_user", "Tim", "read_doc", "document",
-                        Instant.parse("2026-03-01T00:00:00Z")));
-        assertNotNull(result);
-        assertTrue(result.entityIds().contains("Tim's_salary_Jan"));
-        assertTrue(result.entityIds().contains("Tim's_salary_Feb"));
-        assertTrue(result.entityIds().contains("Tim's_salary_Mar"));
+    void custUser2_cannotViewDoc3FebAtJan() {
+        EntitlementsResult result = client.isEntitledTo(
+                new EntitySubjectContext("cust_user", "user-2-jan"),
+                new EntityRequestContext("cust_document", "doc-3-feb", "access",
+                        Instant.parse("2026-01-01T00:00:00Z")));
+        assertFalse(result.result(),
+                "user-2-jan should not be able to view doc-3-feb at 2026-01-01 (activeFrom=2026-02-01)");
+    }
+
+    @Test
+    @Order(23)
+    void custUser2_canViewDoc3FebAtFeb() {
+        EntitlementsResult result = client.isEntitledTo(
+                new EntitySubjectContext("cust_user", "user-2-jan"),
+                new EntityRequestContext("cust_document", "doc-3-feb", "access",
+                        Instant.parse("2026-02-01T00:00:00Z")));
+        assertTrue(result.result(),
+                "user-2-jan should be able to view doc-3-feb at 2026-02-01 (activeFrom=2026-02-01)");
     }
 
     // -------------------------------------------------------------------------
-    // Demo 4: Lookup users who can read a specific document
+    // Demo 4: Subscription inheritance with time-gated parent_subscription
     // -------------------------------------------------------------------------
 
     @Test
     @Order(30)
-    void lookupSubjects_janDocAtFeb_returnsTimAndAlice() {
-        LookupResult result = client.lookupSubjects(
-                new LookupSubjectsRequest("document", "Tim's_salary_Jan", "read_doc",
-                        "frontegg_user", Instant.parse("2026-02-01T00:00:00Z")));
-        assertNotNull(result);
-        assertTrue(result.entityIds().contains("Tim"),
-                "Tim should be a reader of Jan salary doc");
-        assertTrue(result.entityIds().contains("Alice"),
-                "Alice should be a reader of Jan salary doc via folder");
+    void alice_canAccessDoc4ViaSubscriptionAtJan() {
+        // user-3-alice is viewer of sub-2-jan (no caveat)
+        // doc-4-alice has parent_subscription sub-2-jan with active_at activeFrom=2026-01-01
+        EntitlementsResult result = client.isEntitledTo(
+                new EntitySubjectContext("cust_user", "user-3-alice"),
+                new EntityRequestContext("cust_document", "doc-4-alice", "access",
+                        Instant.parse("2026-01-01T00:00:00Z")));
+        assertTrue(result.result(),
+                "user-3-alice should have access to doc-4-alice at 2026-01-01 via sub-2-jan");
     }
 
     @Test
     @Order(31)
-    void lookupSubjects_febDocBeforeFeb_returnsNoOne() {
-        LookupResult result = client.lookupSubjects(
-                new LookupSubjectsRequest("document", "Tim's_salary_Feb", "read_doc",
-                        "frontegg_user", Instant.parse("2026-01-15T00:00:00Z")));
+    void alice_cannotAccessDoc4BeforeJan() {
+        EntitlementsResult result = client.isEntitledTo(
+                new EntitySubjectContext("cust_user", "user-3-alice"),
+                new EntityRequestContext("cust_document", "doc-4-alice", "access",
+                        Instant.parse("2025-12-31T23:59:59Z")));
+        assertFalse(result.result(),
+                "user-3-alice should not have access to doc-4-alice before 2026-01-01");
+    }
+
+    // -------------------------------------------------------------------------
+    // Demo 5: LookupResources for cust_document
+    // -------------------------------------------------------------------------
+
+    @Test
+    @Order(40)
+    void lookupResources_user2AtJan_onlyDoc2() {
+        LookupResult result = client.lookupResources(
+                new LookupResourcesRequest("cust_user", "user-2-jan", "access", "cust_document",
+                        Instant.parse("2026-01-01T00:00:00Z")));
         assertNotNull(result);
-        assertFalse(result.entityIds().contains("Tim"));
-        assertFalse(result.entityIds().contains("Alice"));
+        assertTrue(result.entityIds().contains("doc-2-jan"),
+                "user-2-jan should see doc-2-jan at 2026-01-01");
+        assertFalse(result.entityIds().contains("doc-3-feb"),
+                "user-2-jan should not see doc-3-feb at 2026-01-01");
+    }
+
+    @Test
+    @Order(41)
+    void lookupResources_user2AtFeb_doc2AndDoc3() {
+        LookupResult result = client.lookupResources(
+                new LookupResourcesRequest("cust_user", "user-2-jan", "access", "cust_document",
+                        Instant.parse("2026-02-01T00:00:00Z")));
+        assertNotNull(result);
+        assertTrue(result.entityIds().contains("doc-2-jan"),
+                "user-2-jan should see doc-2-jan at 2026-02-01");
+        assertTrue(result.entityIds().contains("doc-3-feb"),
+                "user-2-jan should see doc-3-feb at 2026-02-01");
+    }
+
+    // -------------------------------------------------------------------------
+    // Demo 6: LookupSubjects for cust_document
+    // -------------------------------------------------------------------------
+
+    @Test
+    @Order(50)
+    void lookupSubjects_doc2AtJan_returnsUser2() {
+        LookupResult result = client.lookupSubjects(
+                new LookupSubjectsRequest("cust_document", "doc-2-jan", "access",
+                        "cust_user", Instant.parse("2026-01-01T00:00:00Z")));
+        assertNotNull(result);
+        assertTrue(result.entityIds().contains("user-2-jan"),
+                "user-2-jan should be a subject of doc-2-jan at 2026-01-01");
+    }
+
+    @Test
+    @Order(51)
+    void lookupSubjects_doc3FebBeforeFeb_returnsNone() {
+        LookupResult result = client.lookupSubjects(
+                new LookupSubjectsRequest("cust_document", "doc-3-feb", "access",
+                        "cust_user", Instant.parse("2026-01-15T00:00:00Z")));
+        assertNotNull(result);
+        assertFalse(result.entityIds().contains("user-2-jan"),
+                "user-2-jan should not be a subject of doc-3-feb before 2026-02-01");
     }
 }

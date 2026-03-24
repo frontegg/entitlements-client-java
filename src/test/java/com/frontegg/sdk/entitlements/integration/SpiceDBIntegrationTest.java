@@ -65,9 +65,9 @@ class SpiceDBIntegrationTest {
     static void setup() {
         schemaWriter = new SpiceDBSchemaWriter(
                 spicedb.getGrpcEndpoint(), spicedb.getPresharedKey());
-        schemaWriter.writeSchema();
-        schemaWriter.writeRelationships();
-        schemaWriter.writeCaveatRelationships();
+        schemaWriter.writeIntegrationSchema();
+        schemaWriter.writeIntegrationRelationships();
+        schemaWriter.writeIntegrationCaveatRelationships();
 
         ClientConfiguration config = ClientConfiguration.builder()
                 .engineEndpoint(spicedb.getGrpcEndpoint())
