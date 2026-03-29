@@ -7,6 +7,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -30,6 +33,56 @@ jobs:
             echo "::error::GPG key is expired. Generate a new key or extend the expiry and update the GPG_SIGNING_KEY org secret."
             exit 1
           fi
+      - name: Generate CHANGELOG
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]' | sed -n '2p')
+          {
+            echo "## [$VERSION] - $(date -u +%Y-%m-%d)"
+            echo ""
+            if [ -n "$PREV_TAG" ]; then
+              RANGE="$PREV_TAG..HEAD"
+            else
+              RANGE="HEAD"
+            fi
+            git log $RANGE --pretty=format:"%s" | grep -E '^(feat|fix|perf|refactor|docs|chore|build|ci|test|revert)(\(.+\))?!?:' | \
+            awk '
+              /^feat/ { section="### Features"; feats = feats "\n- " $0; next }
+              /^fix/  { section="### Bug Fixes"; fixes = fixes "\n- " $0; next }
+              /^perf/ { perfs = perfs "\n- " $0; next }
+              /^revert/ { reverts = reverts "\n- " $0; next }
+              { others = others "\n- " $0 }
+              END {
+                if (feats)   { print "### Features";   print feats;   print "" }
+                if (fixes)   { print "### Bug Fixes";  print fixes;   print "" }
+                if (perfs)   { print "### Performance"; print perfs;  print "" }
+                if (reverts) { print "### Reverts";    print reverts; print "" }
+                if (others)  { print "### Other";      print others;  print "" }
+              }
+            '
+            echo ""
+          } > /tmp/new_section.md
+          if [ -f CHANGELOG.md ] && grep -q "^## \[" CHANGELOG.md; then
+            # Prepend new section after the header lines
+            head -n $(grep -n "^## \[" CHANGELOG.md | head -1 | cut -d: -f1 | awk '{print $1-1}') CHANGELOG.md > /tmp/changelog_header.md
+            tail -n +$(grep -n "^## \[" CHANGELOG.md | head -1 | cut -d: -f1) CHANGELOG.md > /tmp/changelog_rest.md
+            cat /tmp/changelog_header.md /tmp/new_section.md /tmp/changelog_rest.md > CHANGELOG.md
+          else
+            {
+              echo "# Changelog"
+              echo ""
+              echo "All notable changes to this project will be documented in this file."
+              echo ""
+              cat /tmp/new_section.md
+            } > CHANGELOG.md
+          fi
+      - name: Commit CHANGELOG
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --cached --quiet || git commit -m "docs(changelog): update for ${GITHUB_REF_NAME}"
+          git push origin HEAD:master
       - name: Set release version
         run: |
           VERSION=${GITHUB_REF_NAME#v}
