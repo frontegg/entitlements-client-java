@@ -4,6 +4,11 @@ Java SDK for Frontegg's entitlements engine. Perform feature, permission, and fi
 authorization (FGA) checks from JVM applications against Frontegg's SpiceDB-backed ReBAC engine
 over gRPC.
 
+> **⚠️ Pre-1.0 / Beta**
+> This SDK is in active development. Until version 1.0.0 is released, **breaking changes may
+> occur between minor versions**. Pin to an exact version in production and review the
+> [CHANGELOG](CHANGELOG.md) before upgrading.
+
 The client is thread-safe, manages a single multiplexed HTTP/2 gRPC channel, and is designed to
 be created once and shared for the lifetime of an application.
 
